@@ -831,7 +831,7 @@ private fun CampaignsScreen(api: ApiClient) {
         })
     }
     if (showImport) {
-        CampaignImportDialog(api, onClose = { showImport = false }, onDone = { showImport = false; load() })
+        CampaignImportDialog(api, selectedAccountId, onClose = { showImport = false }, onDone = { showImport = false; load() })
     }
 }
 
@@ -916,6 +916,7 @@ private fun CampaignDetailDialog(
 @Composable
 private fun CampaignImportDialog(
     api: ApiClient,
+    selectedAccountId: String,
     onClose: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -966,7 +967,7 @@ private fun CampaignImportDialog(
                                 preview.forEach { row ->
                                     val body = JsonObject().apply {
                                         addProperty("name", row["name"].orEmpty().ifBlank { "Imported campaign" })
-                                        addProperty("instagramAccountId", "")
+                                        addProperty("instagramAccountId", selectedAccountId)
                                         add("keywords", JsonArray().apply { row["keywords"].orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { add(it) } })
                                         addProperty("matchAnyWord", false)
                                         addProperty("dmMessage", row["dm_message"].orEmpty())
