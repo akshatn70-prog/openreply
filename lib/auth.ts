@@ -7,6 +7,8 @@ import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 import { isEmailAllowedToSignIn } from "@/lib/env";
 import { headers } from "next/headers";
 import { getMobileUserId } from "@/lib/mobile-auth";
+import { headers } from "next/headers";
+import { getMobileUserId } from "@/lib/mobile-auth";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
@@ -66,6 +68,12 @@ export const authConfig = {
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
 export async function getCurrentUserId(): Promise<string | null> {
+  const authorization = (await headers()).get("authorization");
+  if (authorization?.startsWith("Bearer ")) {
+    const mobileUserId = await getMobileUserId(authorization.slice(7).trim());
+    if (mobileUserId) return mobileUserId;
+  }
+
   const session = await auth();
   return session?.user?.id ?? null;
 }
