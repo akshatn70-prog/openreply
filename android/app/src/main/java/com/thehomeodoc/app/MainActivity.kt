@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -325,11 +327,15 @@ private fun DashboardScreen(api: ApiClient) {
         data?.let { d ->
             val accounts = d.getAsJsonArray("instagramAccounts") ?: JsonArray()
             Text("Hello, " + (d.get("userName")?.asString ?: "there") + "!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text(
-                (accounts.size()).toString() + if (accounts.size() == 1) " connected account" else " connected accounts" +
-                    " • " + (d.get("contactsCount")?.asInt ?: 0) + " contacts",
-                color = Color.Gray
-            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (accounts.size()).toString() + if (accounts.size() == 1) " connected account" else " connected accounts" +
+                        " • " + (d.get("contactsCount")?.asInt ?: 0) + " contacts",
+                    color = Color.Gray,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { /* open DM Logs from the native drawer */ }) { Text("See activity") }
+            }
             if (accounts.size() > 1) {
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -466,6 +472,26 @@ private fun OverviewScreen(api: ApiClient) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { (label, value) -> StatCard(label, value, Modifier.weight(1f)) }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                item {
+                    Text("Followers Over Time", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    val history = d.getAsJsonArray("followerHistory")?.asList().orEmpty()
+                    if (history.isEmpty()) {
+                        Text("No follower history available.", color = Color.Gray, fontSize = 12.sp)
+                    } else {
+                        val maxFollowers = history.maxOfOrNull { it.asJsonObject.get("followers")?.asInt ?: 0 } ?: 1
+                        history.takeLast(30).forEach { point ->
+                            val o = point.asJsonObject
+                            val followers = o.get("followers")?.asInt ?: 0
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(o.get("date")?.asString ?: "", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.width(80.dp))
+                                Box(Modifier.weight(1f).height(10.dp).background(Panel)) {
+                                    Box(Modifier.fillMaxWidth(followers.toFloat() / maxFollowers.coerceAtLeast(1)).fillMaxHeight().background(Accent))
+                                }
+                                Text(followers.toString(), fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
                     }
                 }
                 item { Text("Posts", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
@@ -1480,7 +1506,12 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
         ) {
             item {
                 SettingsPanel("Interface language") {
-                    Text("English", fontWeight = FontWeight.SemiBold)
+                    var locale by remember { mutableStateOf("en") }
+                    Text("Language", color = Color.Gray, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = locale == "en", onClick = { locale = "en" }, label = { Text("English") })
+                        FilterChip(selected = locale == "zh-TW", onClick = { locale = "zh-TW" }, label = { Text("繁體中文") })
+                    }
                     Text("Saved in this app. Campaign messages stay unchanged.", color = Color.Gray, fontSize = 12.sp)
                 }
             }
