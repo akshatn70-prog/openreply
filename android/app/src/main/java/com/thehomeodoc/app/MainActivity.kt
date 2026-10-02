@@ -277,7 +277,7 @@ private fun MainShell(api: ApiClient, onLogout: () -> Unit) {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (selected) {
-                    Tab.DASHBOARD -> DashboardScreen(api)
+                    Tab.DASHBOARD -> DashboardScreen(api, onSeeActivity = { selected = Tab.LOGS })
                     Tab.OVERVIEW -> OverviewScreen(api)
                     Tab.INBOX -> InboxScreen(api)
                     Tab.CAMPAIGNS -> CampaignsScreen(api)
@@ -303,7 +303,7 @@ private fun Screen(title: String, refresh: (() -> Unit)? = null, content: @Compo
 
 
 @Composable
-private fun DashboardScreen(api: ApiClient) {
+private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
     var data by remember { mutableStateOf<JsonObject?>(null) }
     var accountId by remember { mutableStateOf("all") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -334,7 +334,7 @@ private fun DashboardScreen(api: ApiClient) {
                     color = Color.Gray,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = { /* open DM Logs from the native drawer */ }) { Text("See activity") }
+                TextButton(onClick = onSeeActivity) { Text("See activity") }
             }
             if (accounts.size() > 1) {
                 Spacer(Modifier.height(10.dp))
@@ -388,7 +388,11 @@ private fun DashboardScreen(api: ApiClient) {
                 }
                 items(d.getAsJsonArray("recentLogs")?.asList() ?: emptyList()) { item ->
                     val o = item.asJsonObject
-                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                    onClick = { detail = a },
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                         Column(Modifier.padding(12.dp)) {
                             Text("@" + (o.get("commenterName")?.asString ?: "unknown"), fontWeight = FontWeight.SemiBold)
                             Text(o.get("commentText")?.asString ?: "", color = Color.Gray, maxLines = 2)
@@ -688,6 +692,8 @@ private fun CampaignsScreen(api: ApiClient) {
     var search by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("all") }
     var message by remember { mutableStateOf<String?>(null) }
+    var detail by remember { mutableStateOf<JsonObject?>(null) }
+    var showImport by remember { mutableStateOf(false) }
 
     fun load() {
         GlobalScope.launch(Dispatchers.IO) {
@@ -703,8 +709,9 @@ private fun CampaignsScreen(api: ApiClient) {
     LaunchedEffect(Unit) { load() }
 
     Screen("Campaigns", ::load) {
-        Button(onClick = { showCreate = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("New Campaign")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { showCreate = true }, modifier = Modifier.weight(1f)) { Text("New Campaign") }
+            OutlinedButton(onClick = { showImport = true }, modifier = Modifier.weight(1f)) { Text("Import") }
         }
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
@@ -817,6 +824,173 @@ private fun CampaignsScreen(api: ApiClient) {
     editing?.let { campaign ->
         CreateCampaignDialog(api, { editing = null; load() }, campaign)
     }
+    detail?.let { campaign ->
+        CampaignDetailDialog(api, campaign, onClose = { detail = null }, onEdit = {
+            editing = campaign
+            detail = null
+        })
+    }
+    if (showImport) {
+        CampaignImportDialog(api, onClose = { showImport = false }, onDone = { showImport = false; load() })
+    }
+}
+
+@Composable
+private fun CampaignDetailDialog(
+    api: ApiClient,
+    campaign: JsonObject,
+    onClose: () -> Unit,
+    onEdit: () -> Unit
+) {
+    var tab by remember { mutableStateOf("Insights") }
+    var busy by remember { mutableStateOf(false) }
+    var current by remember { mutableStateOf(campaign) }
+
+    fun toggle() {
+        val id = current.get("id")?.asString ?: return
+        busy = true
+        GlobalScope.launch(Dispatchers.IO) {
+            val body = JsonObject().apply { addProperty("isActive", !(current.get("isActive")?.asBoolean == true)) }
+            runCatching { api.patch("/api/automations?id=" + id, body) }
+            withContext(Dispatchers.Main) {
+                val copy = JsonObject()
+                current.entrySet().forEach { copy.add(it.key, it.value) }
+                copy.addProperty("isActive", body.get("isActive").asBoolean)
+                current = copy
+                busy = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(current.get("name")?.asString ?: "Campaign") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (current.get("isActive")?.asBoolean == true) "LIVE" else "Paused")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = tab == "Insights", onClick = { tab = "Insights" }, label = { Text("Insights") })
+                    FilterChip(selected = tab == "Preview", onClick = { tab = "Preview" }, label = { Text("Preview") })
+                }
+                if (tab == "Insights") {
+                    val a = current.getAsJsonObject("analytics")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatCard("Sends", a?.get("sent")?.asInt ?: 0, Modifier.weight(1f))
+                        StatCard("Clicks", a?.get("clicks")?.asInt ?: 0, Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatCard("Failed", a?.get("failed")?.asInt ?: 0, Modifier.weight(1f))
+                        StatCard("CTR", a?.get("ctr")?.asInt ?: 0, Modifier.weight(1f))
+                    }
+                    Text("Trigger: " + when {
+                        current.get("matchAnyPost")?.asBoolean == true -> "Any post or reel"
+                        current.get("pendingNextReel")?.asBoolean == true -> "Your next reel"
+                        else -> "A specific post or reel"
+                    }, color = Color.Gray)
+                    Text("Keywords: " + if (current.get("matchAnyWord")?.asBoolean == true) "Any comment" else current.getAsJsonArray("keywords")?.asList()?.joinToString(", ") { it.asString }.orEmpty())
+                    Text("DM: " + current.get("dmMessage")?.asString.orEmpty())
+                    if (current.get("openingDmEnabled")?.asBoolean == true) Text("Opening DM: " + current.get("openingDmMessage")?.asString.orEmpty())
+                    if (current.get("requireFollow")?.asBoolean == true) Text("Follow gate: " + current.get("followPromptMessage")?.asString.orEmpty())
+                    if (current.get("followUpEnabled")?.asBoolean == true) Text("Follow-up: " + current.get("followUpMessage")?.asString.orEmpty())
+                } else {
+                    Text("Instagram preview", fontWeight = FontWeight.SemiBold)
+                    Text("@" + current.getAsJsonObject("instagramAccount")?.get("username")?.asString.orEmpty(), color = Accent)
+                    Text("Comment: " + (current.getAsJsonArray("keywords")?.asList()?.firstOrNull()?.asString ?: "nice!"), color = Color.Gray)
+                    if (current.get("publicReplyEnabled")?.asBoolean == true) Text("Public reply: " + (current.getAsJsonArray("publicReplyMessages")?.asList()?.firstOrNull()?.asString ?: current.get("publicReplyMessage")?.asString.orEmpty()))
+                    if (current.get("openingDmEnabled")?.asBoolean == true) Text("Opening DM: " + current.get("openingDmMessage")?.asString.orEmpty())
+                    Text("Main DM: " + current.get("dmMessage")?.asString.orEmpty())
+                    if (current.get("requireFollow")?.asBoolean == true) Text("Follow button: " + (current.get("followPromptButtonLabel")?.asString ?: "I'm following"))
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onEdit) { Text("Edit") }
+                TextButton(enabled = !busy, onClick = { toggle() }) { Text(if (current.get("isActive")?.asBoolean == true) "Stop" else "Resume") }
+                TextButton(onClick = onClose) { Text("Close") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun CampaignImportDialog(
+    api: ApiClient,
+    onClose: () -> Unit,
+    onDone: () -> Unit
+) {
+    var csv by remember { mutableStateOf("") }
+    var preview by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var importing by remember { mutableStateOf(false) }
+
+    fun parse() {
+        val lines = csv.lines().map { it.trim() }.filter { it.isNotBlank() }
+        if (lines.size < 2) { error = "Add a CSV header and at least one row."; return }
+        val headers = lines.first().split(",").map { it.trim().lowercase() }
+        val rows = lines.drop(1).map { line ->
+            val cols = line.split(",")
+            headers.mapIndexedNotNull { i, h -> if (i < cols.size) h to cols[i].trim() else null }.toMap()
+        }
+        if (rows.any { it["keywords"].isNullOrBlank() || it["dm_message"].isNullOrBlank() }) {
+            error = "Every row needs keywords and dm_message."; return
+        }
+        preview = rows
+        error = null
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Import campaigns") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Paste CSV. Required: keywords, dm_message. Optional: name, public_reply, tracked_url, opening_dm, opening_dm_button.", color = Color.Gray, fontSize = 12.sp)
+                OutlinedTextField(value = csv, onValueChange = { csv = it }, modifier = Modifier.fillMaxWidth().height(180.dp), label = { Text("CSV") })
+                TextButton(onClick = { csv = "name,keywords,dm_message\nExample,LINK,Here is your link" }) { Text("Fill with a sample") }
+                Button(onClick = { parse() }, modifier = Modifier.fillMaxWidth()) { Text("Review and import") }
+                error?.let { ErrorText(it) }
+                preview.forEachIndexed { i, row ->
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(row["name"].takeUnless { it.isNullOrBlank() } ?: "Campaign ${i + 1}", fontWeight = FontWeight.SemiBold)
+                            Text("Keywords: " + row["keywords"].orEmpty(), color = Accent, fontSize = 12.sp)
+                            Text(row["dm_message"].orEmpty(), color = Color.Gray, maxLines = 2)
+                        }
+                    }
+                }
+                if (preview.isNotEmpty()) {
+                    Button(enabled = !importing, onClick = {
+                        importing = true
+                        GlobalScope.launch(Dispatchers.IO) {
+                            try {
+                                preview.forEach { row ->
+                                    val body = JsonObject().apply {
+                                        addProperty("name", row["name"].orEmpty().ifBlank { "Imported campaign" })
+                                        addProperty("instagramAccountId", "")
+                                        add("keywords", JsonArray().apply { row["keywords"].orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { add(it) } })
+                                        addProperty("matchAnyWord", false)
+                                        addProperty("dmMessage", row["dm_message"].orEmpty())
+                                        addProperty("publicReplyEnabled", row["public_reply"].orEmpty().isNotBlank())
+                                        add("publicReplyMessages", JsonArray().apply { row["public_reply"]?.takeIf { it.isNotBlank() }?.let { add(it) } })
+                                        addProperty("trackedDestinationUrl", row["tracked_url"].orEmpty())
+                                        addProperty("openingDmEnabled", row["opening_dm"].orEmpty().isNotBlank())
+                                        addProperty("openingDmMessage", row["opening_dm"].orEmpty())
+                                        addProperty("openingDmButtonLabel", row["opening_dm_button"].orEmpty())
+                                        addProperty("isActive", false)
+                                    }
+                                    api.post("/api/automations", body)
+                                }
+                                withContext(Dispatchers.Main) { importing = false; onDone() }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { importing = false; error = e.message ?: "Import failed." }
+                            }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text(if (importing) "Importing…" else "Import all") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
 }
 
 @Composable
