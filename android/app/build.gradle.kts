@@ -14,7 +14,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "API_BASE_URL", ""https://openreply-u6me.onrender.com"")
+        buildConfigField("String", "API_BASE_URL", "\"https://openreply-u6me.onrender.com\"")
     }
 
     buildTypes {
