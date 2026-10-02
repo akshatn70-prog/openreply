@@ -118,7 +118,7 @@ function ReplyPreview() {
 const steps = [
   [
     "Connect your account",
-    "Choose Zernio or your own Meta app, then connect an Instagram Business or Creator account.",
+    "Connect your Instagram Business or Creator account through your own Meta app and the official Meta Instagram API.",
   ],
   [
     "Set up a campaign",
