@@ -200,7 +200,7 @@ export default function SettingsPage() {
                       ? new Date(account.tokenExpiresAt).toLocaleDateString(locale)
                       : t("not available")}{" "}
                     · {account.webhookSubscribed ? t("Webhook ready") : t("Webhook pending")}
-                  </p>p>
+                  </p>
                 </div>
                 <button
                   onClick={() => disconnectInstagram(account.id)}
