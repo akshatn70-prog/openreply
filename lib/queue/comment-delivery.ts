@@ -33,3 +33,58 @@ export async function claimCommentDelivery(
   });
   return result.count === 1;
 }
+
+
+export async function claimUserRevealDelivery({
+  automationId,
+  workspaceId,
+  instagramAccountId,
+  userId,
+  commenterName,
+}: {
+  automationId: string;
+  workspaceId: string;
+  instagramAccountId: string;
+  userId: string;
+  commenterName: string | null;
+}): Promise<boolean> {
+  const commentId = `reveal:${userId}`;
+
+  await prisma.dmLog.upsert({
+    where: {
+      automationId_commentId: {
+        automationId,
+        commentId,
+      },
+    },
+    create: {
+      workspaceId,
+      automationId,
+      instagramAccountId,
+      commenterId: userId,
+      commenterName,
+      commentText: "(follow-gated reveal)",
+      commentId,
+      status: "PENDING",
+    },
+    update: {},
+  });
+
+  const result = await prisma.dmLog.updateMany({
+    where: {
+      automationId,
+      commentId,
+      status: { not: "SENT" as const },
+      dmDeliveryUnconfirmed: false,
+      attempts: { lt: MAX_COMMENT_SEND_ATTEMPTS },
+    },
+    data: {
+      dmDeliveryUnconfirmed: true,
+      attempts: { increment: 1 },
+      status: "PENDING",
+      errorMessage: null,
+    },
+  });
+
+  return result.count === 1;
+}
