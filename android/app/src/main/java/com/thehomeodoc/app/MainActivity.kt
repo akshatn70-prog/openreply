@@ -224,7 +224,7 @@ private fun DashboardScreen(api: ApiClient) {
                     }
                 }
             }
-        } ?: if (error == null) Loading()
+        } ?: run { if (error == null) Loading() }
     }
 }
 
