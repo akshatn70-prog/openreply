@@ -323,7 +323,7 @@ function connectionScope(data: DmQueueJob) {
   return data.accountConnectionId ? { instagramAccountId: data.accountConnectionId } : {};
 }
 
-async function processComment(job: DmWorkerJob): Promise<void> {
+async function processComment(job: DmWorkerJob & { data: ProcessCommentJob }): Promise<void> {
   const {
     instagramAccountId,
     commentId,
@@ -990,7 +990,7 @@ async function sendFollowRecheckAck({
  * The postback payload is `reveal:<automationId>`; the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
  */
-async function processPostback(job: DmWorkerJob): Promise<void> {
+async function processPostback(job: DmWorkerJob & { data: ProcessPostbackJob }): Promise<void> {
   const { instagramAccountId, userId, payload, fallback } = job.data;
 
   const isFollowCheck = payload.startsWith("followcheck:");
@@ -1419,7 +1419,7 @@ async function processPostback(job: DmWorkerJob): Promise<void> {
  * Best-effort: if the message can't be delivered (e.g. the 24-hour messaging
  * window closed because the delay was long), it is logged, not retried forever.
  */
-async function processFollowUp(job: DmWorkerJob): Promise<void> {
+async function processFollowUp(job: DmWorkerJob & { data: ProcessFollowUpJob }): Promise<void> {
   const { instagramAccountId, userId, automationId, commenterName } = job.data;
 
   const automation = await prisma.automation.findFirst({
@@ -1473,7 +1473,7 @@ async function processFollowUp(job: DmWorkerJob): Promise<void> {
  * comments) and delivers the reveal directly, honouring the follow gate.
  * Dedup is per inbound message id, so each message triggers at most one reply.
  */
-async function processMessage(job: DmWorkerJob): Promise<void> {
+async function processMessage(job: DmWorkerJob & { data: ProcessMessageJob }): Promise<void> {
   const { instagramAccountId, messageId, messageText, senderId } = job.data;
 
   const automations = await prisma.automation.findMany({
@@ -1771,15 +1771,15 @@ async function processMessage(job: DmWorkerJob): Promise<void> {
 
 async function dispatchJob(job: DmWorkerJob): Promise<void> {
   if (job.name === POSTBACK_JOB_NAME) {
-    return processPostback(job as DmWorkerJob);
+    return processPostback(job as DmWorkerJob & { data: ProcessPostbackJob });
   }
   if (job.name === FOLLOWUP_JOB_NAME) {
-    return processFollowUp(job as DmWorkerJob);
+    return processFollowUp(job as DmWorkerJob & { data: ProcessFollowUpJob });
   }
   if (job.name === MESSAGE_JOB_NAME) {
-    return processMessage(job as DmWorkerJob);
+    return processMessage(job as DmWorkerJob & { data: ProcessMessageJob });
   }
-  return processComment(job as DmWorkerJob);
+  return processComment(job as DmWorkerJob & { data: ProcessCommentJob });
 }
 
 async function processJob(job: DmWorkerJob): Promise<void> {
