@@ -1177,54 +1177,161 @@ private fun MultiField(value: String, label: String, singleLine: Boolean, onChan
 }
 
 
+
 @Composable
 private fun InboxScreen(api: ApiClient) {
+    var accounts by remember { mutableStateOf<JsonArray?>(null) }
+    var accountId by remember { mutableStateOf("") }
     var conversations by remember { mutableStateOf<JsonArray?>(null) }
-    var selected by remember { mutableStateOf<JsonObject?>(null) }
-    var text by remember { mutableStateOf("") }
+    var active by remember { mutableStateOf<JsonObject?>(null) }
+    var messages by remember { mutableStateOf<JsonArray?>(null) }
+    var draft by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    fun load() {
+    var sending by remember { mutableStateOf(false) }
+
+    fun loadAccounts() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val d = api.get("/api/instagram/conversations").getAsJsonObject("data")
-                withContext(Dispatchers.Main) { conversations = d.getAsJsonArray("conversations"); error = null }
-            } catch (e: Exception) { withContext(Dispatchers.Main) { error = e.message } }
+                val d = api.get("/api/instagram/accounts").getAsJsonObject("data")
+                withContext(Dispatchers.Main) {
+                    accounts = d.getAsJsonArray("instagramAccounts")
+                    if (accountId.isBlank()) accountId = d.get("selectedInstagramAccountId")?.asString ?: accounts?.get(0)?.asJsonObject?.get("id")?.asString.orEmpty()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load Instagram accounts." }
+            }
         }
     }
-    LaunchedEffect(Unit) { load() }
-    Screen("Inbox", ::load) {
+
+    fun loadConversations() {
+        if (accountId.isBlank()) return
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val d = api.get("/api/instagram/conversations?instagramAccountId=" + accountId).getAsJsonObject("data")
+                withContext(Dispatchers.Main) { conversations = d.getAsJsonArray("conversations"); error = null }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load conversations." }
+            }
+        }
+    }
+
+    fun loadMessages(conversationId: String) {
+        if (accountId.isBlank()) return
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val d = api.get("/api/instagram/conversations/" + conversationId + "?instagramAccountId=" + accountId).getAsJsonObject("data")
+                val list = JsonArray()
+                d.getAsJsonArray("messages")?.forEach { list.add(it) }
+                withContext(Dispatchers.Main) { messages = list; error = null }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load messages." }
+            }
+        }
+    }
+
+    fun send() {
+        val conversation = active ?: return
+        val recipient = conversation.getAsJsonObject("contact")?.get("id")?.asString.orEmpty()
+        val text = draft.trim()
+        if (recipient.isBlank() || text.isBlank() || sending) return
+        sending = true
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val body = JsonObject().apply {
+                    addProperty("instagramAccountId", accountId)
+                    addProperty("recipientId", recipient)
+                    addProperty("text", text)
+                }
+                api.post("/api/instagram/conversations", body)
+                withContext(Dispatchers.Main) { draft = ""; sending = false }
+                loadMessages(conversation.get("id").asString)
+                loadConversations()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { sending = false; error = e.message ?: "Failed to send message." }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadAccounts() }
+    LaunchedEffect(accountId) {
+        active = null
+        messages = null
+        loadConversations()
+    }
+    LaunchedEffect(active?.get("id")?.asString) {
+        val id = active?.get("id")?.asString ?: return@LaunchedEffect
+        loadMessages(id)
+    }
+
+    Screen("Inbox", ::loadConversations) {
         error?.let { ErrorText(it) }
-        selected?.let { c ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { selected = null }) { Text("← Back") }
-                Text(c.getAsJsonObject("contact")?.get("username")?.asString ?: "Conversation", fontWeight = FontWeight.Bold)
+        if ((accounts?.size() ?: 0) > 1) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                accounts?.asList()?.forEach { item ->
+                    val a = item.asJsonObject
+                    val id = a.get("id")?.asString ?: return@forEach
+                    FilterChip(selected = accountId == id, onClick = { accountId = id }, label = { Text("@" + (a.get("username")?.asString ?: "")) })
+                }
             }
-            Spacer(Modifier.height(10.dp))
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
-                Text(c.getAsJsonObject("lastMessage")?.get("text")?.asString ?: "No message", Modifier.padding(16.dp))
+            Spacer(Modifier.height(8.dp))
+        }
+
+        active?.let { conversation ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { active = null; messages = null }) { Text("Back") }
+                Text("@" + (conversation.getAsJsonObject("contact")?.get("username")?.asString ?: "unknown"), fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text("Reply…") })
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = {
-                    val recipient = c.getAsJsonObject("contact")?.get("id")?.asString ?: return@Button
-                    val body = JsonObject().apply { addProperty("recipientId", recipient); addProperty("text", text) }
-                    GlobalScope.launch(Dispatchers.IO) {
-                        runCatching { api.post("/api/instagram/conversations", body) }
-                        withContext(Dispatchers.Main) { text = ""; load() }
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(messages?.asList() ?: emptyList()) { item ->
+                    val m = item.asJsonObject
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.get("fromMe")?.asBoolean == true) Arrangement.End else Arrangement.Start) {
+                        Card(colors = CardDefaults.cardColors(containerColor = if (m.get("fromMe")?.asBoolean == true) Accent.copy(alpha = 0.25f) else Panel)) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(m.get("text")?.asString ?: "", color = Color.White)
+                                m.get("createdTime")?.asString?.let { Text(it, color = Color.Gray, fontSize = 10.sp) }
+                            }
+                        }
                     }
-                }) { Text("Send") }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Reply…") },
+                    maxLines = 4
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(enabled = !sending && draft.isNotBlank(), onClick = { send() }) {
+                    Text(if (sending) "Sending…" else "Send")
+                }
             }
         } ?: run {
+            Text("Conversations", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Spacer(Modifier.height(6.dp))
             conversations?.let { list ->
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(list.asList()) { item ->
-                        val c = item.asJsonObject
-                        Card(onClick = { selected = c }, colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        val conversation = item.asJsonObject
+                        Card(
+                            onClick = { active = conversation },
+                            colors = CardDefaults.cardColors(containerColor = Panel),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Column(Modifier.padding(14.dp)) {
-                                Text(c.getAsJsonObject("contact")?.get("username")?.asString ?: "Instagram user", fontWeight = FontWeight.Bold)
-                                Text(c.getAsJsonObject("lastMessage")?.get("text")?.asString ?: "No messages", color = Color.Gray, maxLines = 2)
+                                Text(
+                                    if (conversation.get("detailsUnavailable")?.asBoolean == true) "Details unavailable"
+                                    else "@" + (conversation.getAsJsonObject("contact")?.get("username")?.asString ?: "unknown"),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                conversation.getAsJsonObject("lastMessage")?.let { last ->
+                                    Text(last.get("text")?.asString ?: "(no text)", color = Color.Gray, maxLines = 2)
+                                }
+                                conversation.get("updatedTime")?.asString?.let { Text(it, color = Color.Gray, fontSize = 10.sp) }
                             }
                         }
                     }
