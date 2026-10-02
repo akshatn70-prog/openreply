@@ -49,6 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
 import java.util.concurrent.TimeUnit
 
 private val Dark = Color(0xFF0B0B10)
@@ -561,8 +562,12 @@ private fun LogsScreen(api: ApiClient) {
                     if (status != "ALL") append("&status=").append(status)
                     if (accountId != "all") append("&instagramAccountId=").append(accountId)
                 }
-                val d = api.get(query).getAsJsonObject("data")
-                val a = api.get("/api/instagram/accounts").getAsJsonObject("data").getAsJsonArray("instagramAccounts")
+                val logsRequest = async { api.get(query).getAsJsonObject("data") }
+                val accountsRequest = async {
+                    api.get("/api/instagram/accounts").getAsJsonObject("data").getAsJsonArray("instagramAccounts")
+                }
+                val d = logsRequest.await()
+                val a = accountsRequest.await()
                 withContext(Dispatchers.Main) {
                     logs = d.getAsJsonArray("logs")
                     totalPages = d.getAsJsonObject("pagination")?.get("totalPages")?.asInt ?: 1
@@ -1730,9 +1735,12 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
     fun load() {
         appScope.launch(Dispatchers.IO) {
             try {
-                val stats = api.get("/api/dashboard/stats").getAsJsonObject("data")
-                val accountData = api.get("/api/instagram/accounts").getAsJsonObject("data")
-                val memberData = api.get("/api/workspace/members").getAsJsonObject("data")
+                val statsRequest = async { api.get("/api/dashboard/stats").getAsJsonObject("data") }
+                val accountsRequest = async { api.get("/api/instagram/accounts").getAsJsonObject("data") }
+                val membersRequest = async { api.get("/api/workspace/members").getAsJsonObject("data") }
+                val stats = statsRequest.await()
+                val accountData = accountsRequest.await()
+                val memberData = membersRequest.await()
                 withContext(Dispatchers.Main) {
                     workspace = stats.getAsJsonObject("workspace")
                     accounts = accountData.getAsJsonArray("instagramAccounts")
