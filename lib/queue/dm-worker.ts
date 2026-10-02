@@ -27,7 +27,6 @@ import {
   getUserFollowStatus,
   sendCommentReply,
   sendDirectMessage,
-  sendDirectMessageWithButton,
   sendDirectMessageWithButtons,
   sendDirectMessageWithLinkButton,
   sendPrivateReply,
