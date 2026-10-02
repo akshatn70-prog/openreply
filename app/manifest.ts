@@ -6,8 +6,8 @@ import type { MetadataRoute } from "next";
 // a phone practical.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TheHomeDoc",
-    short_name: "TheHomeDoc",
+    name: "thehomeodoc",
+    short_name: "thehomeodoc",
     description: "Instagram comment-to-DM automation",
     start_url: "/overview",
     display: "standalone",
