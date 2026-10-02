@@ -40,7 +40,10 @@ const createAutomationSchema = z
     followPromptMessage: z.string().max(1000).optional().nullable(),
     followPromptButtonLabel: z.string().max(20).optional().nullable(),
     followPromptProfileButtonLabel: z.string().max(20).optional().nullable(),
-    followPromptProfileUrl: z.string().url().max(2048).optional().nullable(),
+    followPromptProfileUrl: z
+      .union([z.string().url().max(2048), z.literal("")])
+      .optional()
+      .nullable(),
     followUpEnabled: z.boolean().optional().default(false),
     followUpMessage: z.string().max(1000).optional().nullable(),
     // Minutes to wait before the follow-up. Capped at 24h so it stays inside
@@ -105,7 +108,10 @@ const updateAutomationSchema = z.object({
   followPromptMessage: z.string().max(1000).optional().nullable(),
   followPromptButtonLabel: z.string().max(20).optional().nullable(),
   followPromptProfileButtonLabel: z.string().max(20).optional().nullable(),
-  followPromptProfileUrl: z.string().url().max(2048).optional().nullable(),
+  followPromptProfileUrl: z
+    .union([z.string().url().max(2048), z.literal("")])
+    .optional()
+    .nullable(),
   followUpEnabled: z.boolean().optional(),
   followUpMessage: z.string().max(1000).optional().nullable(),
   followUpDelayMinutes: z.number().int().min(0).max(1440).optional(),
