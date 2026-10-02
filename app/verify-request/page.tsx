@@ -4,7 +4,7 @@ import Link from "next/link";
 export async function generateMetadata() {
   const { t } = await getI18n();
   return {
-    title: t("Check your email - thehomeodoc"),
+    title: "Check your email - thehomeodoc",
     description: t("A sign-in link was sent to your email."),
   };
 }
