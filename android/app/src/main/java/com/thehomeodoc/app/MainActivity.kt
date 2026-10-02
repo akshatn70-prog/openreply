@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
@@ -210,34 +212,74 @@ private fun LoginScreen(api: ApiClient) {
 }
 
 
+
 private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    DASHBOARD("Home", Icons.Default.Home),
-    CAMPAIGNS("Campaigns", Icons.Default.Campaign),
+    DASHBOARD("Dashboard", Icons.Default.Home),
+    OVERVIEW("Overview", Icons.Default.Analytics),
     INBOX("Inbox", Icons.Default.Chat),
-    ANALYTICS("Analytics", Icons.Default.Analytics),
-    SETTINGS("Settings", Icons.Default.Settings)
+    CAMPAIGNS("Campaigns", Icons.Default.Campaign),
+    LOGS("DM Logs", Icons.Default.List),
+    SETTINGS("Settings", Icons.Default.Settings),
+    DIAGNOSTICS("Diagnostics", Icons.Default.BugReport)
 }
 
 @Composable
 private fun MainShell(api: ApiClient, onLogout: () -> Unit) {
     var selected by remember { mutableStateOf(Tab.DASHBOARD) }
-    Scaffold(
-        containerColor = Dark,
-        bottomBar = {
-            NavigationBar(containerColor = Panel) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(containerColor = Panel) {
+                Spacer(Modifier.height(18.dp))
+                Text("thehomeodoc", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp))
+                HorizontalDivider()
                 Tab.entries.forEach { tab ->
-                    NavigationBarItem(selected == tab, { selected = tab }, icon = { Icon(tab.icon, null) }, label = { Text(tab.label, fontSize = 10.sp) })
+                    NavigationDrawerItem(
+                        label = { Text(tab.label) },
+                        selected = selected == tab,
+                        onClick = {
+                            selected = tab
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = { Icon(tab.icon, contentDescription = null) },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
                 }
             }
         }
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (selected) {
-                Tab.DASHBOARD -> DashboardScreen(api)
-                Tab.CAMPAIGNS -> CampaignsScreen(api)
-                Tab.INBOX -> InboxScreen(api)
-                Tab.ANALYTICS -> AnalyticsScreen(api)
-                Tab.SETTINGS -> SettingsScreen(api, onLogout)
+    ) {
+        Scaffold(
+            containerColor = Dark,
+            topBar = {
+                Row(
+                    Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Default.List, "Menu")
+                    }
+                    Text(selected.label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (selected == Tab.SETTINGS) {
+                        IconButton(onClick = onLogout) {
+                            Icon(Icons.Default.Logout, "Sign out")
+                        }
+                    }
+                }
+            }
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                when (selected) {
+                    Tab.DASHBOARD -> DashboardScreen(api)
+                    Tab.OVERVIEW -> OverviewScreen(api)
+                    Tab.INBOX -> InboxScreen(api)
+                    Tab.CAMPAIGNS -> CampaignsScreen(api)
+                    Tab.LOGS -> LogsScreen(api)
+                    Tab.SETTINGS -> SettingsScreen(api, onLogout)
+                    Tab.DIAGNOSTICS -> DiagnosticsScreen(api)
+                }
             }
         }
     }
@@ -298,6 +340,264 @@ private fun DashboardScreen(api: ApiClient) {
                 }
             }
         } ?: run { if (error == null) Loading() }
+    }
+}
+
+
+@Composable
+private fun OverviewScreen(api: ApiClient) {
+    var data by remember { mutableStateOf<JsonObject?>(null) }
+    var accountId by remember { mutableStateOf("all") }
+    var count by remember { mutableStateOf("50") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val query = "/api/instagram/overview?count=" + count + if (accountId != "all") "&instagramAccountId=" + accountId else ""
+                val d = api.get(query).getAsJsonObject("data")
+                withContext(Dispatchers.Main) { data = d; error = null }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load overview." }
+            }
+        }
+    }
+
+    LaunchedEffect(accountId, count) { load() }
+
+    Screen("Overview", ::load) {
+        error?.let { ErrorText(it) }
+        data?.let { d ->
+            val accounts = d.getAsJsonArray("accounts") ?: JsonArray()
+            if (accounts.size() > 1) {
+                Text("Instagram account", color = Color.Gray, fontSize = 12.sp)
+                accounts.asList().forEach { item ->
+                    val a = item.asJsonObject
+                    val id = a.get("id")?.asString ?: return@forEach
+                    RadioOption(accountId == id, "@" + (a.get("username")?.asString ?: "account")) { accountId = id }
+                }
+                RadioOption(accountId == "all", "All accounts") { accountId = "all" }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("25", "50", "100", "all").forEach { option ->
+                    FilterChip(
+                        selected = count == option,
+                        onClick = { count = option },
+                        label = { Text(if (option == "all") "All time" else "Last " + option) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            val totals = d.getAsJsonObject("totals") ?: JsonObject()
+            val metric = listOf(
+                "Views" to (totals.get("views")?.asInt ?: 0),
+                "Reach" to (totals.get("reach")?.asInt ?: 0),
+                "Likes" to (totals.get("likes")?.asInt ?: 0),
+                "Comments" to (totals.get("comments")?.asInt ?: 0),
+                "Saved" to (totals.get("saved")?.asInt ?: 0),
+                "Shares" to (totals.get("shares")?.asInt ?: 0)
+            )
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Text("@" + (d.getAsJsonObject("account")?.get("username")?.asString ?: "instagram"), color = Accent, fontWeight = FontWeight.Bold)
+                    Text((d.get("followers")?.asInt ?: 0).toString() + " followers", color = Color.Gray)
+                }
+                items(metric.chunked(2)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (label, value) -> StatCard(label, value, Modifier.weight(1f)) }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                item { Text("Posts", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
+                items(d.getAsJsonArray("posts")?.asList() ?: emptyList()) { item ->
+                    val p = item.asJsonObject
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(p.get("mediaType")?.asString ?: "POST", color = Accent, fontSize = 11.sp)
+                            Text(p.get("caption")?.asString ?: "No caption", maxLines = 2)
+                            Text(
+                                "Views " + (p.get("views")?.asInt ?: 0) + " • Reach " + (p.get("reach")?.asInt ?: 0) +
+                                    " • Likes " + (p.get("likes")?.asInt ?: 0) + " • Comments " + (p.get("comments")?.asInt ?: 0),
+                                color = Color.Gray, fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        } ?: Loading()
+    }
+}
+
+@Composable
+private fun LogsScreen(api: ApiClient) {
+    val statuses = listOf("ALL", "SENT", "FAILED", "PENDING", "SKIPPED_RATE_LIMIT", "SKIPPED_PLAN_LIMIT", "SKIPPED_DEDUP")
+    var status by remember { mutableStateOf("ALL") }
+    var accountId by remember { mutableStateOf("all") }
+    var logs by remember { mutableStateOf<JsonArray?>(null) }
+    var page by remember { mutableStateOf(1) }
+    var totalPages by remember { mutableStateOf(1) }
+    var accounts by remember { mutableStateOf<JsonArray?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val query = buildString {
+                    append("/api/logs?page=")
+                    append(page)
+                    append("&limit=20")
+                    if (status != "ALL") append("&status=").append(status)
+                    if (accountId != "all") append("&instagramAccountId=").append(accountId)
+                }
+                val d = api.get(query).getAsJsonObject("data")
+                val a = api.get("/api/instagram/accounts").getAsJsonObject("data").getAsJsonArray("instagramAccounts")
+                withContext(Dispatchers.Main) {
+                    logs = d.getAsJsonArray("logs")
+                    totalPages = d.getAsJsonObject("pagination")?.get("totalPages")?.asInt ?: 1
+                    accounts = a
+                    error = null
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load logs." }
+            }
+        }
+    }
+
+    LaunchedEffect(status, accountId, page) { load() }
+
+    Screen("DM Logs", ::load) {
+        error?.let { ErrorText(it) }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                if ((accounts?.size() ?: 0) > 1) {
+                    Text("Account", color = Color.Gray, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = accountId == "all", onClick = { accountId = "all"; page = 1 }, label = { Text("All") })
+                        accounts?.asList()?.forEach { item ->
+                            val a = item.asJsonObject
+                            val id = a.get("id")?.asString ?: return@forEach
+                            FilterChip(selected = accountId == id, onClick = { accountId = id; page = 1 }, label = { Text("@" + (a.get("username")?.asString ?: "")) })
+                        }
+                    }
+                }
+                Text("Status", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    statuses.forEach { s ->
+                        FilterChip(selected = status == s, onClick = { status = s; page = 1 }, label = { Text(s) })
+                    }
+                }
+            }
+
+            items(logs?.asList() ?: emptyList()) { item ->
+                val l = item.asJsonObject
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("@" + (l.get("commenterName")?.asString ?: l.get("commenterId")?.asString?.take(8).orEmpty()), fontWeight = FontWeight.Bold)
+                        Text(l.get("commentText")?.asString ?: "", color = Color.Gray, maxLines = 2)
+                        Text(l.getAsJsonObject("automation")?.get("name")?.asString ?: "Campaign")
+                        Text("@" + (l.getAsJsonObject("instagramAccount")?.get("username")?.asString ?: ""), color = Accent, fontSize = 12.sp)
+                        Text(l.get("status")?.asString ?: "", color = Accent, fontSize = 12.sp)
+                        l.get("errorMessage")?.asString?.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    }
+                }
+            }
+
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Page " + page + " / " + totalPages, color = Color.Gray)
+                    Row {
+                        TextButton(enabled = page > 1, onClick = { page-- }) { Text("Previous") }
+                        TextButton(enabled = page < totalPages, onClick = { page++ }) { Text("Next") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsScreen(api: ApiClient) {
+    var data by remember { mutableStateOf<JsonObject?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val d = api.get("/api/admin/diagnostics").getAsJsonObject("data")
+                withContext(Dispatchers.Main) { data = d; error = null }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load diagnostics." }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    Screen("Diagnostics", ::load) {
+        error?.let { ErrorText(it) }
+        data?.let { d ->
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    val worker = d.getAsJsonObject("workerHealth")
+                    val healthy = worker?.get("healthy")?.asBoolean == true
+                    StatusCard("Worker health", if (healthy) "Healthy" else "Needs attention")
+                }
+                item {
+                    val q = d.getAsJsonObject("queueCounts")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("waiting", "active", "delayed", "failed").forEach { key ->
+                            StatCard(key, q?.get(key)?.asInt ?: 0, Modifier.weight(1f))
+                        }
+                    }
+                }
+                item { DiagnosticSection("Recent Worker Alerts", d.getAsJsonArray("workerAlerts"), "message") }
+                item { DiagnosticSection("Campaign DM Failures And Skips", d.getAsJsonArray("dmFailures"), "errorMessage") }
+                item { DiagnosticSection("Webhook Failures", d.getAsJsonArray("webhookFailures"), "errorMessage") }
+                item { DiagnosticSection("Token Refresh Failures", d.getAsJsonArray("tokenRefreshFailures"), "message") }
+                item { DiagnosticSection("Operational Event Timeline", d.getAsJsonArray("operationalEvents"), "message") }
+            }
+        } ?: Loading()
+    }
+}
+
+@Composable
+private fun StatusCard(title: String, value: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title, color = Color.Gray, fontSize = 12.sp)
+            Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticSection(title: String, array: JsonArray?, field: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            val values = array?.asList().orEmpty()
+            if (values.isEmpty()) {
+                Text("No records.", color = Color.Gray, modifier = Modifier.padding(top = 8.dp))
+            } else {
+                values.take(10).forEach { item ->
+                    val o = item.asJsonObject
+                    Text(o.get(field)?.asString?.takeIf { it.isNotBlank() } ?: o.get("message")?.asString ?: "Event", modifier = Modifier.padding(top = 8.dp), fontSize = 13.sp)
+                    o.get("createdAt")?.asString?.let { Text(it, color = Color.Gray, fontSize = 11.sp) }
+                }
+            }
+        }
     }
 }
 
