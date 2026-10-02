@@ -27,25 +27,6 @@ async function checkDatabase(): Promise<HealthCheck> {
   }
 }
 
-async function checkRedis(): Promise<HealthCheck> {
-  try {
-    const pong = await getRedisConnection().ping();
-    return { status: pong === "PONG" ? "ok" : "error", detail: pong };
-  } catch (error) {
-    return {
-      status: "error",
-      detail: error instanceof Error ? error.message : "Redis check failed",
-    };
-  }
-}
-
-// A fresh heartbeat does not mean the worker is still doing anything. The
-// heartbeat runs on its own interval, so BullMQ's consumer can stop taking jobs
-// — a dropped queue connection, a crashed consumer loop — while the process,
-// and its heartbeat, stay perfectly alive. Health then keeps answering 200
-// while the backlog grows and nobody is served. Seen in production: 385 jobs
-// waiting for hours behind an uptime monitor that never once alerted.
-//
 // A backlog with nothing in flight is the signal, and it is unambiguous: a
 // healthy worker with a concurrency of 5 never leaves jobs waiting with zero
 // active. The threshold only exists to ride out the moment between a job being
@@ -56,12 +37,7 @@ const STUCK_QUEUE_MIN_WAITING = Number(
 
 async function checkQueue(): Promise<HealthCheck & { counts?: unknown }> {
   try {
-    const counts = await getDMQueue().getJobCounts(
-      "waiting",
-      "active",
-      "delayed",
-      "failed"
-    );
+    const counts = await getDMQueueCounts();
     const waiting = counts.waiting ?? 0;
     const active = counts.active ?? 0;
     if (waiting >= STUCK_QUEUE_MIN_WAITING && active === 0) {
@@ -81,9 +57,8 @@ async function checkQueue(): Promise<HealthCheck & { counts?: unknown }> {
 }
 
 export async function GET() {
-  const [database, redis, queue, worker] = await Promise.all([
+  const [database, queue, worker] = await Promise.all([
     checkDatabase(),
-    checkRedis(),
     checkQueue(),
     getWorkerHealth().catch((error) => ({
       healthy: false,
@@ -95,7 +70,6 @@ export async function GET() {
 
   const healthy =
     database.status === "ok" &&
-    redis.status === "ok" &&
     queue.status === "ok" &&
     worker.healthy;
 
@@ -104,7 +78,6 @@ export async function GET() {
       status: healthy ? "ok" : "degraded",
       checks: {
         database,
-        redis,
         queue,
         worker,
       },
