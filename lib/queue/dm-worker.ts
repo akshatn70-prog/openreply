@@ -665,19 +665,33 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       Boolean(automation.openingDmMessage) &&
       Boolean(automation.openingDmButtonLabel);
 
-    // Follow-gating: the link is revealed only after a follow. When an opening
-    // DM is enabled it comes FIRST, and its button routes into the follow check
-    // (opening DM → follow gate → link). Without an opening DM, we check follow
-    // status at comment time: confirmed followers get the link now, everyone
-    // else gets the "follow me first" prompt (re-verified on tap).
+    // Follow-gating: an opening DM keeps its existing first step. Without
+    // one, confirmed followers receive the campaign DM immediately; everyone
+    // else receives the configurable follow prompt.
     let sendFollowPrompt = false;
     if (automation.requireFollow && !useOpeningDm) {
       const alreadyFollows = await getUserFollowStatus({
         context: accessToken,
         recipientId: commenterId,
       });
-      sendFollowPrompt =
-        alreadyFollows !== true;
+      sendFollowPrompt = alreadyFollows !== true;
+
+      // The final campaign DM is lifetime-idempotent per automation + user.
+      // A later matching comment must not unlock another copy.
+      if (!sendFollowPrompt) {
+        const revealLog = await prisma.dmLog.findUnique({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: `reveal:${commenterId}`,
+            },
+          },
+          select: { status: true, dmDeliveryUnconfirmed: true },
+        });
+        if (revealLog?.status === "SENT" || revealLog?.dmDeliveryUnconfirmed) {
+          continue;
+        }
+      }
     }
 
     let claimed;
@@ -694,7 +708,36 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       continue;
     }
     let delivered = false;
+    let revealClaimed = false;
     try {
+      if (automation.requireFollow && !useOpeningDm && !sendFollowPrompt) {
+        revealClaimed = await claimUserRevealDelivery({
+          automationId: automation.id,
+          workspaceId: automation.workspaceId,
+          instagramAccountId: automation.instagramAccountId,
+          userId: commenterId,
+          commenterName,
+        });
+        if (!revealClaimed) {
+          await prisma.dmLog.update({
+            where: {
+              automationId_commentId: {
+                automationId: automation.id,
+                commentId,
+              },
+            },
+            data: {
+              status: "SKIPPED_DEDUP",
+              errorMessage: "Campaign DM already delivered to this user",
+              dmDeliveryUnconfirmed: false,
+            },
+          });
+          if (rateLimit?.reserved) await releaseDMSlot(instagramAccountId);
+          await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+          continue;
+        }
+      }
+
       if (useOpeningDm) {
         const openingText = renderMessageWithTracking({
           message: automation.openingDmMessage as string,
@@ -713,19 +756,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           postId: mediaId,
         });
       } else if (sendFollowPrompt) {
-        const promptText = renderMessageWithoutLink({
-          message:
-            automation.followPromptMessage ||
-            "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
-          commenterName,
-        });
-        await sendPrivateReplyWithButton({
+        await sendPrivateReplyWithButtons({
           context: accessToken,
           instagramAccountId: automation.instagramAccount.instagramId,
-          commentId: commentId,
-          text: promptText,
-          buttonTitle: automation.followPromptButtonLabel || "i'm following",
-          payload: `followcheck:${automation.id}`,
+          commentId,
+          text: renderFollowPrompt(automation, commenterName),
+          buttons: buildFollowPromptButtons(automation),
           postId: mediaId,
         });
       } else if (automation.trackedLinks.length > 0) {
@@ -793,6 +829,22 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       }
 
       delivered = true;
+      if (revealClaimed) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: `reveal:${commenterId}`,
+            },
+          },
+          data: {
+            status: "SENT",
+            dmSentAt: new Date(),
+            dmDeliveryUnconfirmed: false,
+            errorMessage: null,
+          },
+        });
+      }
       await prisma.dmLog.update({
         where: {
           automationId_commentId: {
@@ -809,6 +861,21 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       });
     } catch (error) {
       const sendError = classifySendError(error);
+      if (revealClaimed) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: `reveal:${commenterId}`,
+            },
+          },
+          data: {
+            status: "FAILED",
+            errorMessage: formatError(sendError),
+            dmDeliveryUnconfirmed: isDeliveryUnconfirmed(sendError),
+          },
+        }).catch(() => {});
+      }
       // Retain reservations if the provider may have delivered the message.
       if (isConfirmedSendRejection(sendError)) {
         if (rateLimit?.reserved) await releaseDMSlot(instagramAccountId);
