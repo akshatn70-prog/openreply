@@ -51,7 +51,22 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
-        run: npm run lint
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee lint.log
+          status=${PIPESTATUS[0]}
+          exit ${status}
+      - name: Persist lint error
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp lint.log CI_LINT_ERROR.log
+          git add CI_LINT_ERROR.log
+          git commit -m "ci: capture lint error" || exit 0
+          git push
 
       - name: Run tests
         run: npm test
