@@ -122,7 +122,7 @@ const NON_TEMPLATE_REJECTIONS = [
 function isTemplateRejection(error: unknown): boolean {
   if (
     error instanceof TokenExpiredError ||
-    error instanceof RateLimitError ||
+    error instanceof RateLimitError
   ) {
     return false;
   }
