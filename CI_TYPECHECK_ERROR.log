@@ -1,6 +1,0 @@
-
-> openreply@0.1.0 typecheck
-> tsc --noEmit
-
-__tests__/agency-workspaces.test.ts(100,1): error TS1128: Declaration or statement expected.
-__tests__/agency-workspaces.test.ts(100,2): error TS1128: Declaration or statement expected.
