@@ -189,9 +189,11 @@ model Automation {
   openingDmMessage     String?
   openingDmButtonLabel String?
   linkButtonLabel      String?
-  requireFollow           Boolean @default(false)
-  followPromptMessage     String?
-  followPromptButtonLabel String?
+  requireFollow                 Boolean @default(false)
+  followPromptMessage           String?
+  followPromptButtonLabel       String?
+  followPromptProfileButtonLabel String?
+  followPromptProfileUrl        String?
   followUpEnabled Boolean @default(false)
   followUpMessage String?
   // Minutes to wait after the link is delivered before sending the follow-up.
