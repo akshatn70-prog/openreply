@@ -164,7 +164,7 @@ export default function OverviewPage() {
             {t("Views, reach, saved and shares need the insights permission.")}
           </p>
           <p className="text-sm text-muted mt-1">
-            {t("Reconnect your account to grant it - likes and comments are shown in the meantime.", {})}
+            Reconnect your account to grant it - likes and comments are shown in the meantime.
           </p>
           <a
             href="/api/instagram/connect"
