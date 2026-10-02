@@ -599,6 +599,22 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     try {
       rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
     } catch (error) {
+      if (revealClaimed) {
+        const sendError = classifySendError(error);
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: revealCommentId,
+            },
+          },
+          data: {
+            status: "FAILED",
+            errorMessage: formatError(sendError),
+            dmDeliveryUnconfirmed: isDeliveryUnconfirmed(sendError),
+          },
+        }).catch(() => {});
+      }
       await releaseWorkspaceDMReservation(
         automation.workspaceId,
         usage.periodStart
@@ -1610,6 +1626,22 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         follows !== true;
     }
 
+    const revealCommentId = `reveal:${senderId}`;
+    if (!sendFollowPrompt) {
+      const revealLog = await prisma.dmLog.findUnique({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId: revealCommentId,
+          },
+        },
+        select: { status: true, dmDeliveryUnconfirmed: true },
+      });
+      if (revealLog?.status === "SENT" || revealLog?.dmDeliveryUnconfirmed) {
+        continue;
+      }
+    }
+
     const usage = await reserveWorkspaceDMSend(automation.workspaceId);
     if (!usage.allowed) {
       await prisma.dmLog.upsert({
@@ -1632,23 +1664,32 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       continue;
     }
 
+    let revealClaimed = false;
     try {
       if (sendFollowPrompt) {
-        const promptText = renderMessageWithoutLink({
-          message:
-            automation.followPromptMessage ||
-            "Almost there! Follow me and tap the button below to grab your link 💛",
-          commenterName,
-        });
-        await sendDirectMessageWithButton({
+        await sendDirectMessageWithButtons({
           context: accessToken,
           instagramAccountId: automation.instagramAccount.instagramId,
           userId: senderId,
-          text: promptText,
-          buttonTitle: automation.followPromptButtonLabel || "I'm following ✅",
-          payload: `followcheck:${automation.id}`,
+          text: renderFollowPrompt(automation, commenterName),
+          buttons: buildFollowPromptButtons(automation),
         });
       } else {
+        revealClaimed = await claimUserRevealDelivery({
+          automationId: automation.id,
+          workspaceId: automation.workspaceId,
+          instagramAccountId: automation.instagramAccountId,
+          userId: senderId,
+          commenterName,
+        });
+        if (!revealClaimed) {
+          await releaseWorkspaceDMReservation(
+            automation.workspaceId,
+            usage.periodStart
+          );
+          continue;
+        }
+
         await sendRevealDirectMessage({
           accessToken: accessToken,
           automation: automation,
@@ -1678,6 +1719,22 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         }
       }
 
+      if (revealClaimed) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: revealCommentId,
+            },
+          },
+          data: {
+            status: "SENT",
+            dmSentAt: new Date(),
+            dmDeliveryUnconfirmed: false,
+            errorMessage: null,
+          },
+        });
+      }
       await prisma.dmLog.upsert({
         where: {
           automationId_commentId: {
