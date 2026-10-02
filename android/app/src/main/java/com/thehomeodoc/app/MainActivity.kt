@@ -353,7 +353,8 @@ private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
                 "DMs Sent" to (d.get("dmsSentMonth")?.asInt ?: 0),
                 "Skipped" to (d.get("dmsSkippedMonth")?.asInt ?: 0),
                 "Failed" to (d.get("dmsFailedMonth")?.asInt ?: 0),
-                "Clicks" to (d.get("clicksThisMonth")?.asInt ?: 0)
+                "Clicks" to (d.get("clicksThisMonth")?.asInt ?: 0),
+                "CTR" to (d.get("ctrThisMonth")?.asDouble?.toInt() ?: 0)
             )
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(cards.chunked(2)) { row ->
@@ -453,6 +454,17 @@ private fun OverviewScreen(api: ApiClient) {
                 }
             }
 
+            if (d.get("insightsAvailable")?.asBoolean == false) {
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("Views, reach, saved and shares need the insights permission.")
+                        Text("Reconnect your account to grant it - likes and comments are shown in the meantime.", color = Color.Gray, fontSize = 12.sp)
+                        TextButton(onClick = {
+                            CustomTabsIntent.Builder().build().launchUrl(LocalContext.current, Uri.parse(BuildConfig.API_BASE_URL + "/api/instagram/connect"))
+                        }) { Text("Reconnect Instagram") }
+                    }
+                }
+            }
             Spacer(Modifier.height(10.dp))
             val totals = d.getAsJsonObject("totals") ?: JsonObject()
             val metric = listOf(
@@ -507,9 +519,15 @@ private fun OverviewScreen(api: ApiClient) {
                             Text(p.get("caption")?.asString ?: "No caption", maxLines = 2)
                             Text(
                                 "Views " + (p.get("views")?.asInt ?: 0) + " • Reach " + (p.get("reach")?.asInt ?: 0) +
-                                    " • Likes " + (p.get("likes")?.asInt ?: 0) + " • Comments " + (p.get("comments")?.asInt ?: 0),
+                                    " • Likes " + (p.get("likes")?.asInt ?: 0) + " • Comments " + (p.get("comments")?.asInt ?: 0) +
+                                    " • Saved " + (p.get("saved")?.asInt ?: 0) + " • Shares " + (p.get("shares")?.asInt ?: 0),
                                 color = Color.Gray, fontSize = 12.sp
                             )
+                            p.get("permalink")?.asString?.takeIf { it.isNotBlank() }?.let { url ->
+                                TextButton(onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                }) { Text("Open post") }
+                            }
                         }
                     }
                 }
