@@ -1,0 +1,32 @@
+name: Refresh Instagram Tokens
+
+on:
+  schedule:
+    # 05:00 UTC every day (10:30 AM India time)
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Refresh Instagram tokens
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET GitHub Actions secret is not configured."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --location \
+            --retry 3 \
+            --retry-delay 5 \
+            --connect-timeout 15 \
+            --max-time 60 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://openreply-u6me.onrender.com/api/cron/refresh-tokens"
