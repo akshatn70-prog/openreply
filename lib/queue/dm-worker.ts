@@ -1057,111 +1057,101 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     ]))
     .digest("hex");
 
-  // Follow-gate: before revealing the link, verify the user follows. On a
-  // `followcheck:` tap a non-follower gets the prompt again (no quota spent);
-  // on a read fallback a non-follower is silently skipped — the gate must not
-  // be bypassable by just reading the DM and waiting. On a tap, following or
-  // unverifiable (null) falls through and delivers the link — fail-open so a
-  // real follower is never trapped.
+  // Follow-gate: the opening-DM button is only a router. The user's
+  // "I'm Following" button is the actual verification action.
   if ((isFollowCheck || fallback) && automation.requireFollow) {
     const follows = await getUserFollowStatus({
       context: accessToken,
       recipientId: userId,
     });
-    // A read fallback needs a confirmed follow. Instagram only reports follow
-    // status once the person has tapped a button (before that it answers
-    // "User consent is required", i.e. null), so failing open here handed the
-    // link to anyone who read the opening DM and waited, follower or not.
+
+    // A read fallback has no user action proving intent, so it remains
+    // confirmed-follow-only. The normal button flow below is fail-open only
+    // after it has actually tried to verify the user's "I'm Following" claim.
     if (fallback && follows !== true) return;
-    if (follows === false) {
-      if (fallback) return;
 
-      // A tap on an opening-DM button is not a claim to follow — most people
-      // who tap it simply don't follow yet — so they get the follow prompt
-      // right away. Only the prompt's own button earns the delayed re-check;
-      // holding an opening tap for it left people staring at a silent chat.
-      if (!fromOpeningDm) {
-        // A `false` on a button tap: give the follow time to register and look
-        // again, rather than rejecting someone who just followed.
-        //
-        // The job id is bucketed by the recheck window, not fixed per user.
-        // BullMQ keeps completed jobs (removeOnComplete: count 1000) and silently
-        // drops an add whose id is still retained, so a fixed id let a person be
-        // re-checked once and then never again — their next false tap did
-        // nothing at all, no link and no prompt. Bucketing still collapses a burst
-        // of taps into a single re-check, which is what the fixed id was for.
-        //
-        // Jobs queued before re-checks were counted carry only `followRecheck`,
-        // which meant one re-check done.
-        const rechecksDone =
-          job.data.followRecheckAttempt ?? (job.data.followRecheck ? 1 : 0);
-        if (rechecksDone < FOLLOW_RECHECK_DELAYS_MS.length) {
-          const delay = FOLLOW_RECHECK_DELAYS_MS[rechecksDone];
-          const window = Math.floor(Date.now() / delay);
-          await getDMQueue().add(
-            POSTBACK_JOB_NAME,
-            {
-              ...job.data,
-              followRecheck: true,
-              followRecheckAttempt: rechecksDone + 1,
-            },
-            {
-              delay,
-              jobId: `postback_recheck_${automation.id}_${userId}_${rechecksDone + 1}_${window}`,
-            }
-          );
-          if (rechecksDone === 0) {
-            await sendFollowRecheckAck({
-              context: accessToken,
-              instagramAccountId: automation.instagramAccount.instagramId,
-              automationId: automation.id,
-              userId,
-              operationId,
-            });
-          }
-          return;
-        }
-
-        // Last `false`: they are genuinely not following. Record it — this
-        // branch used to return without writing anything at all, so a gate that
-        // turned people away left no trace and its rejection rate could not be
-        // measured, only guessed at from complaints.
-        await prisma.operationalEvent
-          .create({
-            data: {
-              workspaceId: automation.workspaceId,
-              source: "WORKER",
-              level: "INFO",
-              message: "Follow gate rejected a button tap",
-              payload: {
-                automationId: automation.id,
-                automationName: automation.name,
-                userId,
-                commenterName,
-              },
-            },
-          })
-          .catch(() => {});
-      }
-
-      const promptText = renderMessageWithoutLink({
-        message:
-          automation.followPromptMessage ||
-          "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
-        commenterName,
-      });
+    // The opening DM's button does not claim that the person followed.
+    // Unverified or non-following users receive the follow prompt immediately.
+    if (fromOpeningDm && follows !== true) {
       try {
         await sendPostbackOnce({
           operationId,
           send: () =>
-            sendDirectMessageWithButton({
+            sendDirectMessageWithButtons({
               context: accessToken,
               instagramAccountId: automation.instagramAccount.instagramId,
-              userId: userId,
-              text: promptText,
-              buttonTitle:
-                automation.followPromptButtonLabel || "i'm following",
-              payload: `followcheck:${automation.id}`,
+              userId,
+              text: renderFollowPrompt(automation, commenterName),
+              buttons: buildFollowPromptButtons(automation),
+            }),
+        });
+      } catch (error) {
+        console.log(
+          "[DM Worker] Failed to send opening-DM follow prompt:",
+          formatError(error),
+        );
+      }
+      return;
+    }
+
+    if (follows === false) {
+      const rechecksDone =
+        job.data.followRecheckAttempt ?? (job.data.followRecheck ? 1 : 0);
+
+      if (rechecksDone < FOLLOW_RECHECK_DELAYS_MS.length) {
+        const delay = FOLLOW_RECHECK_DELAYS_MS[rechecksDone];
+        const window = Math.floor(Date.now() / delay);
+        await getDMQueue().add(
+          POSTBACK_JOB_NAME,
+          {
+            ...job.data,
+            followRecheck: true,
+            followRecheckAttempt: rechecksDone + 1,
+          },
+          {
+            delay,
+            jobId: `postback_recheck_${automation.id}_${userId}_${rechecksDone + 1}_${window}`,
+          }
+        );
+        if (rechecksDone === 0) {
+          await sendFollowRecheckAck({
+            context: accessToken,
+            instagramAccountId: automation.instagramAccount.instagramId,
+            automationId: automation.id,
+            userId,
+            operationId,
+          });
+        }
+        return;
+      }
+
+      await prisma.operationalEvent
+        .create({
+          data: {
+            workspaceId: automation.workspaceId,
+            source: "WORKER",
+            level: "INFO",
+            message: "Follow gate rejected a button tap",
+            payload: {
+              automationId: automation.id,
+              automationName: automation.name,
+              userId,
+              commenterName,
+            },
+          },
+        })
+        .catch(() => {});
+
+      try {
+        await sendPostbackOnce({
+          operationId,
+          send: () =>
+            sendDirectMessageWithButtons({
+              context: accessToken,
+              instagramAccountId: automation.instagramAccount.instagramId,
+              userId,
+              text: renderFollowPrompt(automation, commenterName),
+              buttons: buildFollowPromptButtons(automation),
             }),
         });
       } catch (error) {
@@ -1171,6 +1161,59 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         );
       }
       return;
+    }
+
+    if (follows === null) {
+      const rechecksDone =
+        job.data.followRecheckAttempt ?? (job.data.followRecheck ? 1 : 0);
+
+      // Null is not an immediate success. Give Meta another chance to answer.
+      // If every configured check remains unverifiable, fail open as requested
+      // so a real follower is not trapped by a temporary API/permission issue.
+      if (rechecksDone < FOLLOW_RECHECK_DELAYS_MS.length) {
+        const delay = FOLLOW_RECHECK_DELAYS_MS[rechecksDone];
+        const window = Math.floor(Date.now() / delay);
+        await getDMQueue().add(
+          POSTBACK_JOB_NAME,
+          {
+            ...job.data,
+            followRecheck: true,
+            followRecheckAttempt: rechecksDone + 1,
+          },
+          {
+            delay,
+            jobId: `postback_recheck_${automation.id}_${userId}_${rechecksDone + 1}_${window}`,
+          }
+        );
+        if (rechecksDone === 0) {
+          await sendFollowRecheckAck({
+            context: accessToken,
+            instagramAccountId: automation.instagramAccount.instagramId,
+            automationId: automation.id,
+            userId,
+            operationId,
+          });
+        }
+        return;
+      }
+
+      await prisma.operationalEvent
+        .create({
+          data: {
+            workspaceId: automation.workspaceId,
+            source: "WORKER",
+            level: "WARN",
+            message: "Follow gate verification remained unavailable; failing open",
+            payload: {
+              automationId: automation.id,
+              automationName: automation.name,
+              userId,
+              commenterName,
+            },
+          },
+        })
+        .catch(() => {});
+      // Exhausted null retries: continue to the normal reveal path.
     }
   }
 
