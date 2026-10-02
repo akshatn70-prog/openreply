@@ -1779,7 +1779,7 @@ async function dispatchJob(job: DmWorkerJob): Promise<void> {
   return processComment(job as DmWorkerJob & { data: ProcessCommentJob });
 }
 
-async function processJob(job: DmWorkerJob): Promise<void> {
+export async function processJob(job: DmWorkerJob): Promise<void> {
   try {
     await dispatchJob(job);
   } catch (error) {
