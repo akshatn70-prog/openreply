@@ -601,41 +601,140 @@ private fun DiagnosticSection(title: String, array: JsonArray?, field: String) {
     }
 }
 
+
 @Composable
 private fun CampaignsScreen(api: ApiClient) {
+    val context = LocalContext.current
     var campaigns by remember { mutableStateOf<JsonArray?>(null) }
     var showCreate by remember { mutableStateOf(false) }
+    var search by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf("all") }
     var message by remember { mutableStateOf<String?>(null) }
+
     fun load() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/automations").getAsJsonArray("data")
-                withContext(Dispatchers.Main) { campaigns = d }
-            } catch (e: Exception) { withContext(Dispatchers.Main) { message = e.message } }
+                withContext(Dispatchers.Main) { campaigns = d; message = null }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { message = e.message ?: "Failed to load campaigns." }
+            }
         }
     }
+
     LaunchedEffect(Unit) { load() }
+
     Screen("Campaigns", ::load) {
-        Button(onClick = { showCreate = true }, modifier = Modifier.fillMaxWidth()) { Text("Create campaign") }
-        Spacer(Modifier.height(12.dp))
+        Button(onClick = { showCreate = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("New Campaign")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = search,
+            onValueChange = { search = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Search campaigns by name, keyword, or message…") },
+            singleLine = true
+        )
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("all", "active", "paused").forEach { option ->
+                FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option.replaceFirstChar { it.uppercase() }) })
+            }
+        }
         message?.let { ErrorText(it) }
-        campaigns?.let { list ->
-            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(list.asList()) { item ->
-                    val c = item.asJsonObject
-                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(c.get("name")?.asString ?: "Campaign", fontWeight = FontWeight.Bold)
-                            Text(if (c.get("isActive")?.asBoolean == true) "Active" else "Paused", color = if (c.get("isActive")?.asBoolean == true) Color(0xFF7DD3A5) else Color.Gray)
-                            Text("DMs sent: ${c.getAsJsonObject("analytics")?.get("sent")?.asInt ?: 0} • Clicks: ${c.getAsJsonObject("analytics")?.get("clicks")?.asInt ?: 0}", color = Color.Gray)
-                            Text(c.getAsJsonArray("keywords")?.asList()?.joinToString(", ") ?: "Any word", fontSize = 12.sp, color = Accent)
+
+        val query = search.trim().lowercase()
+        val filtered = campaigns?.asList()?.filter { item ->
+            val a = item.asJsonObject
+            val active = a.get("isActive")?.asBoolean == true
+            val name = a.get("name")?.asString.orEmpty()
+            val dm = a.get("dmMessage")?.asString.orEmpty()
+            val keys = a.getAsJsonArray("keywords")?.asList()?.joinToString(" ").orEmpty()
+            (filter == "all" || (filter == "active" && active) || (filter == "paused" && !active)) &&
+                (query.isBlank() || name.lowercase().contains(query) || dm.lowercase().contains(query) || keys.lowercase().contains(query))
+        } ?: emptyList()
+
+        if (campaigns != null && filtered.isEmpty()) {
+            Text("No campaigns match your search.", color = Color.Gray, modifier = Modifier.padding(20.dp))
+        }
+
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(filtered) { item ->
+                val a = item.asJsonObject
+                val id = a.get("id")?.asString ?: return@items
+                val active = a.get("isActive")?.asBoolean == true
+                val analytics = a.getAsJsonObject("analytics")
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.get("name")?.asString ?: "Campaign", fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (active) "Active" else "Paused",
+                                    color = if (active) Color(0xFF7DD3A5) else Color.Gray,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Switch(
+                                checked = active,
+                                onCheckedChange = { checked ->
+                                    GlobalScope.launch(Dispatchers.IO) {
+                                        val body = JsonObject().apply { addProperty("isActive", checked) }
+                                        runCatching { api.patch("/api/automations?id=" + id, body) }
+                                        withContext(Dispatchers.Main) { load() }
+                                    }
+                                }
+                            )
+                        }
+                        Text("@" + (a.getAsJsonObject("instagramAccount")?.get("username")?.asString ?: ""), color = Accent, fontSize = 12.sp)
+                        Text(a.get("dmMessage")?.asString ?: "", color = Color.Gray, maxLines = 2)
+                        Text(
+                            "Runs " + (a.getAsJsonObject("_count")?.get("dmLogs")?.asInt ?: 0) +
+                                " • " + (analytics?.get("ctr")?.asDouble ?: 0.0) + "% CTR • " +
+                                (analytics?.get("sent")?.asInt ?: 0) + " sent • " +
+                                (analytics?.get("clicks")?.asInt ?: 0) + " clicks",
+                            color = Color.Gray, fontSize = 12.sp
+                        )
+                        a.getAsJsonArray("keywords")?.asList()?.takeIf { it.isNotEmpty() }?.let {
+                            Text(it.joinToString(", ") { k -> k.asString }, color = Accent, fontSize = 12.sp)
+                        }
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            a.get("postUrl")?.asString?.takeIf { it.isNotBlank() }?.let { url ->
+                                TextButton(onClick = {
+                                    val clip = context.getSystemService(ClipboardManager::class.java)
+                                    clip?.setPrimaryClip(ClipData.newPlainText("Instagram URL", url))
+                                }) { Text("Copy URL") }
+                            }
+                            TextButton(onClick = {
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    try {
+                                        api.post("/api/automations/duplicate?id=" + id)
+                                        withContext(Dispatchers.Main) { load() }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) { message = e.message ?: "Duplicate failed." }
+                                    }
+                                }
+                            }) { Text("Duplicate") }
+                            TextButton(onClick = {
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    try {
+                                        api.delete("/api/automations?id=" + id)
+                                        withContext(Dispatchers.Main) { load() }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) { message = e.message ?: "Delete failed." }
+                                    }
+                                }
+                            }) { Text("Delete") }
                         }
                     }
                 }
             }
-        } ?: Loading()
+        }
     }
-    if (showCreate) CreateCampaignDialog(api, { showCreate = false; load() })
+
+    if (showCreate) {
+        CreateCampaignDialog(api, { showCreate = false; load() })
+    }
 }
 
 @Composable
