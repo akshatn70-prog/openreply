@@ -48,6 +48,7 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 import java.util.concurrent.TimeUnit
 
 private val Dark = Color(0xFF0B0B10)
@@ -1501,6 +1502,8 @@ private fun InboxScreen(api: ApiClient) {
     var draft by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
+    var conversationsJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var messagesJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     fun loadAccounts() {
         appScope.launch(Dispatchers.IO) {
@@ -1518,7 +1521,8 @@ private fun InboxScreen(api: ApiClient) {
 
     fun loadConversations() {
         if (accountId.isBlank()) return
-        appScope.launch(Dispatchers.IO) {
+        conversationsJob?.cancel()
+        conversationsJob = appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/instagram/conversations?instagramAccountId=" + accountId).getAsJsonObject("data")
                 withContext(Dispatchers.Main) { conversations = d.getAsJsonArray("conversations"); error = null }
@@ -1530,7 +1534,8 @@ private fun InboxScreen(api: ApiClient) {
 
     fun loadMessages(conversationId: String) {
         if (accountId.isBlank()) return
-        appScope.launch(Dispatchers.IO) {
+        messagesJob?.cancel()
+        messagesJob = appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/instagram/conversations/" + conversationId + "?instagramAccountId=" + accountId).getAsJsonObject("data")
                 val list = JsonArray()
@@ -1576,10 +1581,11 @@ private fun InboxScreen(api: ApiClient) {
         loadMessages(id)
     }
 
-    LaunchedEffect(accountId) {
+    LaunchedEffect(accountId, active?.get("id")?.asString) {
         if (accountId.isBlank()) return@LaunchedEffect
-        while (true) {
+        while (isActive) {
             kotlinx.coroutines.delay(12_000)
+            if (!isActive) break
             loadConversations()
             active?.get("id")?.asString?.let { loadMessages(it) }
         }
