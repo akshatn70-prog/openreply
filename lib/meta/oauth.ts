@@ -81,6 +81,10 @@ export function getAuthorizationUrl(redirectUri: string, state: string): string 
     scope:
       "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
     response_type: "code",
+    // Explicitly select Instagram-only Business Login. Without this flag,
+    // Instagram can route the authorization request to an incompatible login
+    // surface and return its generic "page isn't available" error.
+    enable_fb_login: "0",
     state,
   });
 
