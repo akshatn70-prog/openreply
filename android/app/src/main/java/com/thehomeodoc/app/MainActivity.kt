@@ -12,6 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Campaign
@@ -282,7 +285,7 @@ private fun DashboardScreen(api: ApiClient) {
             Text("Recent activity", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
             Spacer(Modifier.height(8.dp))
             val logs = d.getAsJsonArray("recentLogs") ?: JsonArray()
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(logs.asList()) { item ->
                     val o = item.asJsonObject
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
@@ -317,7 +320,7 @@ private fun CampaignsScreen(api: ApiClient) {
         Spacer(Modifier.height(12.dp))
         message?.let { ErrorText(it) }
         campaigns?.let { list ->
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(list.asList()) { item ->
                     val c = item.asJsonObject
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
@@ -338,51 +341,397 @@ private fun CampaignsScreen(api: ApiClient) {
 @Composable
 private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    var keyword by remember { mutableStateOf("") }
-    var dm by remember { mutableStateOf("") }
-    var link by remember { mutableStateOf("") }
-    var follow by remember { mutableStateOf(false) }
+    var accounts by remember { mutableStateOf<JsonArray?>(null) }
+    var accountId by remember { mutableStateOf("") }
+    var triggerScope by remember { mutableStateOf("specific") }
+    var posts by remember { mutableStateOf<JsonArray?>(null) }
+    var postId by remember { mutableStateOf<String?>(null) }
+    var postUrl by remember { mutableStateOf<String?>(null) }
+    var postCaption by remember { mutableStateOf("") }
+    var postQuery by remember { mutableStateOf("") }
+    var showMorePosts by remember { mutableStateOf(false) }
+    var matchAnyWord by remember { mutableStateOf(false) }
+    var keywords by remember { mutableStateOf("") }
+    var dmTrigger by remember { mutableStateOf(false) }
+    var publicReply by remember { mutableStateOf(false) }
+    var publicReplies by remember { mutableStateOf(listOf("")) }
+    var openingDm by remember { mutableStateOf(false) }
+    var openingMessage by remember { mutableStateOf("") }
+    var openingButton by remember { mutableStateOf("") }
+    var dmMessage by remember { mutableStateOf("") }
+    var linkOpen by remember { mutableStateOf(false) }
+    var firstLink by remember { mutableStateOf("") }
+    var firstButton by remember { mutableStateOf("Open link") }
+    var secondLinkOpen by remember { mutableStateOf(false) }
+    var secondLink by remember { mutableStateOf("") }
+    var secondButton by remember { mutableStateOf("Open link") }
+    var requireFollow by remember { mutableStateOf(false) }
+    var followPrompt by remember { mutableStateOf("") }
+    var followButton by remember { mutableStateOf("I'm following") }
+    var followUp by remember { mutableStateOf(false) }
+    var followUpMessage by remember { mutableStateOf("") }
+    var followUpDelay by remember { mutableStateOf("0") }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var previewTab by remember { mutableStateOf("DM") }
+
+    fun loadAccounts() {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val data = api.get("/api/dashboard/stats").getAsJsonObject("data")
+                val list = data.getAsJsonArray("instagramAccounts") ?: JsonArray()
+                withContext(Dispatchers.Main) {
+                    accounts = list
+                    if (accountId.isBlank() && list.size() > 0) {
+                        accountId = list[0].asJsonObject.get("id").asString
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message ?: "Failed to load Instagram accounts." }
+            }
+        }
+    }
+
+    fun loadPosts(id: String) {
+        if (id.isBlank()) return
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val data = api.get("/api/instagram/posts?instagramAccountId=$id&all=true")
+                val list = data.getAsJsonArray("data") ?: JsonArray()
+                withContext(Dispatchers.Main) {
+                    posts = list
+                    if (postId != null && list.asList().none {
+                            it.asJsonObject.get("id")?.asString == postId
+                        }) {
+                        postId = null
+                        postUrl = null
+                        postCaption = ""
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    error = e.message ?: "Failed to load Instagram posts."
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadAccounts() }
+    LaunchedEffect(accountId, triggerScope) {
+        if (triggerScope == "specific" && accountId.isNotBlank()) loadPosts(accountId)
+    }
+
+    val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    val visiblePosts = posts?.asList()
+        ?.filter {
+            postQuery.isBlank() ||
+                (it.asJsonObject.get("caption")?.asString ?: "")
+                    .contains(postQuery, ignoreCase = true)
+        }
+        ?.let { if (showMorePosts) it else it.take(12) }
+        ?: emptyList()
+
+    fun save() {
+        error = null
+        if (accountId.isBlank()) {
+            error = "Select an Instagram account."
+            return
+        }
+        if (triggerScope == "specific" && postId.isNullOrBlank()) {
+            error = "Pick a specific post or reel."
+            return
+        }
+        if (!matchAnyWord && keywordList.isEmpty()) {
+            error = "Add at least one keyword, or switch to Any word."
+            return
+        }
+        if (dmMessage.trim().isBlank()) {
+            error = "Add the main DM message."
+            return
+        }
+        if (openingDm && (openingMessage.trim().isBlank() || openingButton.trim().isBlank())) {
+            error = "Opening DM needs both a message and button label."
+            return
+        }
+        if (requireFollow && (followPrompt.trim().isBlank() || followButton.trim().isBlank())) {
+            error = "Follow gate needs a prompt and button label."
+            return
+        }
+        if (followUp && followUpMessage.trim().isBlank()) {
+            error = "Follow-up needs a message."
+            return
+        }
+        if (linkOpen && firstLink.isNotBlank() && !firstLink.startsWith("http://") && !firstLink.startsWith("https://")) {
+            error = "First link must start with http:// or https://."
+            return
+        }
+        if (secondLinkOpen && secondLink.isNotBlank() && !secondLink.startsWith("http://") && !secondLink.startsWith("https://")) {
+            error = "Second link must start with http:// or https://."
+            return
+        }
+
+        saving = true
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val body = JsonObject().apply {
+                    addProperty("name", name.trim().ifBlank { "Instagram campaign" })
+                    addProperty("instagramAccountId", accountId)
+                    addProperty("postId", if (triggerScope == "specific") postId else null)
+                    addProperty("postUrl", if (triggerScope == "specific") postUrl else null)
+                    addProperty("pendingNextReel", triggerScope == "next")
+                    addProperty("matchAnyPost", triggerScope == "any")
+                    add("keywords", JsonArray().apply {
+                        if (!matchAnyWord) keywordList.forEach { add(it) }
+                    })
+                    addProperty("matchAnyWord", matchAnyWord)
+                    addProperty("dmTriggerEnabled", dmTrigger)
+                    addProperty("dmMessage", dmMessage.trim())
+                    addProperty("openingDmEnabled", openingDm)
+                    addProperty("openingDmMessage", if (openingDm) openingMessage.trim() else null)
+                    addProperty("openingDmButtonLabel", if (openingDm) openingButton.trim() else null)
+                    addProperty("publicReplyEnabled", publicReply)
+                    add("publicReplyMessages", JsonArray().apply {
+                        if (publicReply) publicReplies.map { it.trim() }.filter { it.isNotBlank() }.forEach { add(it) }
+                    })
+                    addProperty("trackedDestinationUrl", if (linkOpen) firstLink.trim() else "")
+                    addProperty("linkButtonLabel", if (linkOpen) firstButton.trim().ifBlank { "Open link" } else "Open link")
+                    addProperty("secondaryDestinationUrl", if (secondLinkOpen) secondLink.trim() else "")
+                    addProperty("secondaryButtonLabel", if (secondLinkOpen) secondButton.trim().ifBlank { "Open link" } else "Open link")
+                    addProperty("requireFollow", requireFollow)
+                    addProperty("followPromptMessage", if (requireFollow) followPrompt.trim() else "")
+                    addProperty("followPromptButtonLabel", if (requireFollow) followButton.trim() else "")
+                    addProperty("followUpEnabled", followUp)
+                    addProperty("followUpMessage", if (followUp) followUpMessage.trim() else "")
+                    addProperty("followUpDelayMinutes", followUpDelay.toIntOrNull()?.coerceIn(0, 1440) ?: 0)
+                    addProperty("isActive", true)
+                    addProperty("wholeWordMatch", true)
+                }
+                api.post("/api/automations", body)
+                withContext(Dispatchers.Main) { onDone() }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    saving = false
+                    error = e.message ?: "Failed to create campaign."
+                }
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = { if (!saving) onDone() },
         title = { Text("New campaign") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Field(name, "Campaign name") { name = it }
-                Field(keyword, "Keyword") { keyword = it }
-                Field(dm, "DM message") { dm = it }
-                Field(link, "Optional link") { link = it }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(follow, { follow = it }); Text("Require follow")
+
+                accounts?.let { list ->
+                    if (list.size() > 0) {
+                        SectionTitle("Instagram account")
+                        list.asList().forEach { item ->
+                            val a = item.asJsonObject
+                            val id = a.get("id")?.asString ?: return@forEach
+                            RadioOption(accountId == id, "@" + (a.get("username")?.asString ?: "account")) {
+                                accountId = id
+                                postId = null
+                                postUrl = null
+                                postCaption = ""
+                                posts = null
+                            }
+                        }
+                    }
                 }
+
+                SectionTitle("When someone comments on")
+                RadioOption(triggerScope == "specific", "a specific post or reel") { triggerScope = "specific" }
+                RadioOption(triggerScope == "any", "any post or reel") { triggerScope = "any"; postId = null; postUrl = null }
+                RadioOption(triggerScope == "next", "next post or reel") { triggerScope = "next"; postId = null; postUrl = null }
+
+                if (triggerScope == "specific") {
+                    Field(postQuery, "Search posts by caption") { postQuery = it; showMorePosts = false }
+                    if (visiblePosts.isEmpty()) {
+                        Text(if (posts == null) "Loading posts…" else "No matching posts.", color = Color.Gray, fontSize = 12.sp)
+                    } else {
+                        visiblePosts.forEach { item ->
+                            val p = item.asJsonObject
+                            val id = p.get("id")?.asString ?: return@forEach
+                            val selected = postId == id
+                            Card(
+                                onClick = {
+                                    postId = id
+                                    postUrl = p.get("permalink")?.asString
+                                    postCaption = p.get("caption")?.asString ?: ""
+                                },
+                                colors = CardDefaults.cardColors(containerColor = if (selected) Accent.copy(alpha = 0.20f) else Panel),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = p.get("thumbnail_url")?.asString ?: p.get("media_url")?.asString,
+                                        contentDescription = "Instagram post",
+                                        modifier = Modifier.size(58.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(if (selected) "Selected • " + (p.get("media_type")?.asString ?: "POST") else (p.get("media_type")?.asString ?: "POST"), color = Accent, fontSize = 11.sp)
+                                        Text(p.get("caption")?.asString ?: "No caption", maxLines = 2)
+                                    }
+                                }
+                            }
+                        }
+                        if ((posts?.size() ?: 0) > 12 && !showMorePosts) {
+                            TextButton(onClick = { showMorePosts = true }) { Text("Show more posts") }
+                        }
+                    }
+                }
+
+                SectionTitle("And this comment has")
+                RadioOption(!matchAnyWord, "a specific word or words") { matchAnyWord = false }
+                if (!matchAnyWord) {
+                    Field(keywords, "Keywords (comma separated)") { keywords = it }
+                }
+                RadioOption(matchAnyWord, "any word") { matchAnyWord = true }
+
+                ToggleRow("Also reply when someone DMs", dmTrigger) { dmTrigger = it }
+                ToggleRow("Reply to their comments under the post", publicReply) { publicReply = it }
+                if (publicReply) {
+                    publicReplies.forEachIndexed { index, value ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Field(value, "Public reply " + (index + 1)) { next ->
+                                publicReplies = publicReplies.mapIndexed { i, old -> if (i == index) next else old }
+                            }
+                            if (publicReplies.size > 1) {
+                                TextButton(onClick = {
+                                    publicReplies = publicReplies.filterIndexed { i, _ -> i != index }
+                                }) { Text("Remove") }
+                            }
+                        }
+                    }
+                    if (publicReplies.size < 10) {
+                        TextButton(onClick = { publicReplies = publicReplies + "" }) { Text("+ Add another reply") }
+                    }
+                }
+
+                SectionTitle("They will get")
+                ToggleRow("Opening DM", openingDm) { openingDm = it }
+                if (openingDm) {
+                    MultiField(openingMessage, "Opening DM message", false) { openingMessage = it }
+                    Field(openingButton, "Opening DM button label") { openingButton = it }
+                }
+
+                ToggleRow("Follow requirement first", requireFollow) { requireFollow = it }
+                if (requireFollow) {
+                    MultiField(followPrompt, "Follow prompt", false) { followPrompt = it }
+                    Field(followButton, "Follow button label") { followButton = it }
+                }
+
+                SectionTitle("And then, they will get")
+                MultiField(dmMessage, "Main DM message", false) { dmMessage = it }
+                ToggleRow("Add first tracked link", linkOpen) { linkOpen = it }
+                if (linkOpen) {
+                    Field(firstLink, "First link URL") { firstLink = it }
+                    Field(firstButton, "First link button label") { firstButton = it }
+                    ToggleRow("Add second link", secondLinkOpen) { secondLinkOpen = it }
+                    if (secondLinkOpen) {
+                        Field(secondLink, "Second link URL") { secondLink = it }
+                        Field(secondButton, "Second link button label") { secondButton = it }
+                    }
+                }
+
+                ToggleRow("Follow-up message", followUp) { followUp = it }
+                if (followUp) {
+                    MultiField(followUpMessage, "Follow-up message", false) { followUpMessage = it }
+                    Field(followUpDelay, "Follow-up delay (minutes)") { followUpDelay = it.filter(Char::isDigit) }
+                }
+
+                SectionTitle("Instagram preview")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = previewTab == "DM", onClick = { previewTab = "DM" }, label = { Text("DM") })
+                    FilterChip(selected = previewTab == "Comment", onClick = { previewTab = "Comment" }, label = { Text("Comment") })
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("@" + (accounts?.asList()?.firstOrNull {
+                            it.asJsonObject.get("id")?.asString == accountId
+                        }?.asJsonObject?.get("username")?.asString ?: "instagram"), color = Accent, fontWeight = FontWeight.Bold)
+                        if (previewTab == "Comment") {
+                            Text(publicReplies.firstOrNull { it.isNotBlank() } ?: "Your public reply will appear here.", color = Color.LightGray)
+                        } else {
+                            if (openingDm) Text(openingMessage.ifBlank { "Opening DM message" })
+                            if (requireFollow) Text(followPrompt.ifBlank { "Follow before receiving the link." }, color = Color.LightGray)
+                            Text(dmMessage.ifBlank { "Your main DM message will appear here." })
+                            if (linkOpen) Text(firstButton.ifBlank { "Open link" } + " → " + firstLink.ifBlank { "https://example.com" }, color = Accent)
+                            if (secondLinkOpen) Text(secondButton.ifBlank { "Open link" } + " → " + secondLink.ifBlank { "https://example.com/second" }, color = Accent)
+                            if (followUp) Text("Follow-up (" + followUpDelay.ifBlank { "0" } + " min): " + followUpMessage.ifBlank { "Follow-up message" }, color = Color.LightGray)
+                        }
+                    }
+                }
+
+                Text(
+                    "Validation: account, trigger, keyword mode, main DM, and enabled optional sections are checked before saving.",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
                 error?.let { ErrorText(it) }
             }
         },
         confirmButton = {
-            Button(enabled = !saving, onClick = {
-                saving = true
-                GlobalScope.launch(Dispatchers.IO) {
-                    try {
-                        val body = JsonObject().apply {
-                            addProperty("name", name.trim())
-                            addProperty("matchAnyPost", true)
-                            add("keywords", JsonArray().apply { add(keyword.trim()) })
-                            addProperty("dmMessage", dm.trim())
-                            addProperty("requireFollow", follow)
-                            addProperty("isActive", true)
-                            addProperty("wholeWordMatch", true)
-                            if (link.isNotBlank()) addProperty("trackedDestinationUrl", link.trim())
-                        }
-                        api.post("/api/automations", body)
-                        withContext(Dispatchers.Main) { onDone() }
-                    } catch (e: Exception) { withContext(Dispatchers.Main) { error = e.message; saving = false } }
-                }
-            }) { Text(if (saving) "Saving…" else "Create") }
+            Button(enabled = !saving, onClick = { save() }) {
+                Text(if (saving) "Saving…" else "Go Live")
+            }
         },
         dismissButton = { TextButton(onClick = onDone, enabled = !saving) { Text("Cancel") } }
     )
 }
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+}
+
+@Composable
+private fun RadioOption(selected: Boolean, label: String, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = if (selected) Accent.copy(alpha = 0.15f) else Panel),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = selected, onClick = onClick)
+            Text(label, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onToggle)
+    }
+}
+
+@Composable
+private fun MultiField(value: String, label: String, singleLine: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 3,
+        maxLines = if (singleLine) 1 else 6
+    )
+}
+
 
 @Composable
 private fun InboxScreen(api: ApiClient) {
@@ -425,7 +774,7 @@ private fun InboxScreen(api: ApiClient) {
             }
         } ?: run {
             conversations?.let { list ->
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(list.asList()) { item ->
                         val c = item.asJsonObject
                         Card(onClick = { selected = c }, colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
@@ -468,7 +817,7 @@ private fun AnalyticsScreen(api: ApiClient) {
             }
             Spacer(Modifier.height(18.dp))
             Text("Recent posts", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(d.getAsJsonArray("posts")?.asList()?.take(10) ?: emptyList()) { item ->
                     val p = item.asJsonObject
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
