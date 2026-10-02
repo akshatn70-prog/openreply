@@ -48,7 +48,22 @@ jobs:
           git push
 
       - name: Typecheck
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck 2>&1 | tee typecheck.log
+          status=${PIPESTATUS[0]}
+          exit ${status}
+      - name: Persist typecheck error
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp typecheck.log CI_TYPECHECK_ERROR.log
+          git add CI_TYPECHECK_ERROR.log
+          git commit -m "ci: capture typecheck error" || exit 0
+          git push
 
       - name: Lint
         shell: bash
