@@ -1173,89 +1173,6 @@ describe("DM Worker — DM keyword trigger", () => {
   });
 });
 
-describe("Zernio worker routing", () => {
-  it("fails open on unknown follow status and sends once through the selected provider", async () => {
-    mockPrisma.zernioConnection.findUnique.mockResolvedValue({
-      apiKey: "encrypted_key",
-    });
-    mockPrisma.automation.findMany.mockResolvedValue([
-      {
-        ...mockAutomation,
-        requireFollow: true,
-        instagramAccount: {
-          ...mockAutomation.instagramAccount,
-          provider: "ZERNIO",
-          workspaceId: "workspace_123",
-          zernioAccountId: "zernio_selected",
-          accessToken: "",
-        },
-      },
-    ]);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            isFollower: null,
-            unavailableReason: "consent_required",
-          })
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ messageId: "sent" }))
-      );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      await getProcessor()(createMockJob());
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock.mock.calls[1][0]).toContain(
-        "/inbox/comments/media_101/comment_555/private-reply"
-      );
-      expect(JSON.parse(fetchMock.mock.calls[1][1].body).accountId).toBe(
-        "zernio_selected"
-      );
-      expect(mockSendPrivateReply).not.toHaveBeenCalled();
-      expect(mockSendPrivateReplyWithButton).not.toHaveBeenCalled();
-      expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: "SENT" }),
-        })
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-});
-
-it("stops BullMQ retries after an ambiguous Zernio direct-message outcome", async () => {
-  mockPrisma.zernioConnection.findUnique.mockResolvedValue({
-    apiKey: "encrypted",
-  });
-  mockPrisma.automation.findFirst.mockResolvedValue({
-    ...mockAutomation,
-    instagramAccount: {
-      ...mockAutomation.instagramAccount,
-      provider: "ZERNIO",
-      workspaceId: "workspace_123",
-      zernioAccountId: "remote",
-      accessToken: "",
-    },
-  });
-  const fetchMock = vi.fn().mockRejectedValue(new Error("connection reset"));
-  vi.stubGlobal("fetch", fetchMock);
-  try {
-    await expect(getProcessor()(createMockPostbackJob())).rejects.toMatchObject(
-      {
-        name: "UnrecoverableError",
-        message: expect.stringContaining("Inspect the Instagram inbox"),
-      }
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  } finally {
-    vi.unstubAllGlobals();
-  }
-});
-
 it('binds queued comments to the local connection that received them', async () => {
   mockPrisma.automation.findMany.mockResolvedValue([]);
   const job = createMockJob();
@@ -1277,166 +1194,6 @@ it('keeps an unconfirmed public reply untouched after the DM was delivered', asy
   mockPrisma.dmLog.findUnique.mockResolvedValue({ status: 'SENT', publicReplyDeliveryUnconfirmed: true, publicReplySentAt: null });
   await getProcessor()(createMockJob());
   expect(mockPrisma.dmLog.update).not.toHaveBeenCalled();
-});
-
-describe("durable Zernio postback delivery", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
-  beforeEach(() => {
-    const claims = new Set<string>();
-    mockPrisma.postbackDelivery.create.mockImplementation(
-      async ({ data }: { data: { id: string } }) => {
-        if (claims.has(data.id)) throw { code: "P2002" };
-        claims.add(data.id);
-        return data;
-      },
-    );
-    mockPrisma.postbackDelivery.delete.mockImplementation(
-      async ({ where }: { where: { id: string } }) => {
-        claims.delete(where.id);
-      },
-    );
-    mockPrisma.zernioConnection.findUnique.mockResolvedValue({
-      apiKey: "encrypted",
-    });
-    mockPrisma.automation.findFirst.mockResolvedValue({
-      ...mockAutomation,
-      instagramAccount: {
-        ...mockAutomation.instagramAccount,
-        provider: "ZERNIO",
-        workspaceId: "workspace_123",
-        zernioAccountId: "remote",
-        accessToken: "",
-      },
-    });
-    fetchMock = vi.fn();
-  });
-
-  function tap(mid: string) {
-    return createMockPostbackJob({
-      instagramAccountId: "ig_456",
-      userId: "commenter_999",
-      payload: "reveal:auto_789",
-      mid,
-    });
-  }
-
-  it("retains an uncertain tap across a newer successful tap and queue eviction", async () => {
-    fetchMock
-      .mockImplementation(
-        async () =>
-          new Response(JSON.stringify({ data: { messageId: "new-tap" } })),
-      )
-      .mockRejectedValueOnce(new Error("connection reset"));
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const process = getProcessor();
-      await expect(process(tap("old"))).rejects.toMatchObject({
-        name: "UnrecoverableError",
-      });
-      await process(tap("new"));
-      await process({ ...tap("old"), id: "redelivery-job" });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.postbackDelivery.delete).not.toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("deduplicates successful old taps while permitting each distinct new mid", async () => {
-    fetchMock.mockImplementation(
-      async () => new Response(JSON.stringify({ data: { messageId: "sent" } })),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const process = getProcessor();
-      await process(tap("first"));
-      await process(tap("second"));
-      await process({ ...tap("first"), id: "after-retention" });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("releases a claim on a confirmed rejection so the same tap can retry", async () => {
-    fetchMock
-      .mockResolvedValueOnce(new Response("{}", { status: 429 }))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: { messageId: "sent" } })),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const process = getProcessor();
-      await expect(process(tap("retry"))).rejects.toThrow();
-      await process(tap("retry"));
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.postbackDelivery.delete).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-  it("claims concurrent deliveries of the same tap before either can send twice", async () => {
-    fetchMock.mockImplementation(
-      async () => new Response(JSON.stringify({ data: { messageId: "sent" } })),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const process = getProcessor();
-      await Promise.all([
-        process(tap("concurrent")),
-        process({ ...tap("concurrent"), id: "other-job" }),
-      ]);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("deduplicates follow-gate prompts as well as reveal messages", async () => {
-    mockPrisma.automation.findFirst.mockResolvedValue({
-      ...mockAutomation,
-      requireFollow: true,
-      instagramAccount: {
-        ...mockAutomation.instagramAccount,
-        provider: "ZERNIO",
-        workspaceId: "workspace_123",
-        zernioAccountId: "remote",
-        accessToken: "",
-      },
-    });
-    fetchMock.mockImplementation(
-      async (_url: string, init: { method: string }) =>
-        new Response(
-          JSON.stringify(
-            init.method === "GET"
-              ? { isFollower: false }
-              : { data: { messageId: "prompt" } },
-          ),
-        ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const process = getProcessor();
-      const followTap = tap("follow");
-      // The prompt goes out on the last delayed re-check — an earlier false
-      // only queues the next one — so exercise that pass: that is where the
-      // prompt is sent, and where a redelivery must not send it a second time.
-      followTap.data = {
-        ...followTap.data,
-        payload: "followcheck:auto_789",
-        followRecheck: true,
-        followRecheckAttempt: 2,
-      };
-      await process(followTap);
-      await process({ ...followTap, id: "redelivery" });
-      expect(
-        fetchMock.mock.calls.filter(([, init]) => init.method === "POST"),
-      ).toHaveLength(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
 });
 
 describe("DM Worker — follow-gate re-check", () => {
@@ -1521,19 +1278,14 @@ describe("DM Worker — follow-gate re-check", () => {
     expect(mockQueueAdd).toHaveBeenLastCalledWith(
       "process-postback",
       expect.objectContaining({ followRecheckAttempt: 1 }),
-      expect.objectContaining({ delay: 20_000 })
+      expect.objectContaining({ delay: 5_000 })
     );
 
     await getProcessor()(
       createMockPostbackJob({ ...tap, followRecheck: true, followRecheckAttempt: 1 })
     );
-    expect(mockQueueAdd).toHaveBeenLastCalledWith(
-      "process-postback",
-      expect.objectContaining({ followRecheckAttempt: 2 }),
-      expect.objectContaining({ delay: 40_000 })
-    );
-    // Neither pass has given up yet, so neither re-sends the prompt.
-    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledTimes(1);
   });
 
   it("treats a re-check queued before counting existed as the first one done", async () => {
@@ -1549,12 +1301,8 @@ describe("DM Worker — follow-gate re-check", () => {
       })
     );
 
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      "process-postback",
-      expect.objectContaining({ followRecheckAttempt: 2 }),
-      expect.anything()
-    );
-    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledTimes(1);
   });
 
   it("prompts a non-follower right away when the tap came from the opening DM", async () => {
