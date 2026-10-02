@@ -4,7 +4,7 @@ import {
   isConfirmedSendRejection,
   isDeliveryUnconfirmed,
 } from "@/lib/instagram/delivery-errors";
-import { claimCommentDelivery, MAX_COMMENT_SEND_ATTEMPTS } from "./comment-delivery";
+import { claimCommentDelivery, claimUserRevealDelivery, MAX_COMMENT_SEND_ATTEMPTS } from "./comment-delivery";
 import { createHash } from "node:crypto";
 import { UnrecoverableError, Worker, type Job } from "bullmq";
 import {
@@ -28,9 +28,11 @@ import {
   sendCommentReply,
   sendDirectMessage,
   sendDirectMessageWithButton,
+  sendDirectMessageWithButtons,
   sendDirectMessageWithLinkButton,
   sendPrivateReply,
   sendPrivateReplyWithButton,
+  sendPrivateReplyWithButtons,
   sendPrivateReplyWithLinkButton,
 } from "@/lib/instagram/provider";
 import {
@@ -158,6 +160,51 @@ function buildLinkButtons(
  * inline, then append any extra tracked URLs on their own lines so no link is
  * lost.
  */
+function followProfileUrl(automation: {
+  followPromptProfileUrl: string | null;
+  instagramAccount: { username: string };
+}): string {
+  return (
+    automation.followPromptProfileUrl?.trim() ||
+    `https://www.instagram.com/${automation.instagramAccount.username}/`
+  );
+}
+
+function buildFollowPromptButtons(automation: {
+  id: string;
+  followPromptProfileButtonLabel: string | null;
+  followPromptProfileUrl: string | null;
+  followPromptButtonLabel: string | null;
+  instagramAccount: { username: string };
+}) {
+  return [
+    {
+      type: "web_url" as const,
+      title: automation.followPromptProfileButtonLabel?.trim() || "Visit Profile",
+      url: followProfileUrl(automation),
+    },
+    {
+      type: "postback" as const,
+      title: automation.followPromptButtonLabel?.trim() || "I'm Following",
+      payload: `followcheck:${automation.id}`,
+    },
+  ];
+}
+
+function renderFollowPrompt(
+  automation: {
+    followPromptMessage: string | null;
+  },
+  commenterName: string | null
+): string {
+  return renderMessageWithoutLink({
+    message:
+      automation.followPromptMessage ||
+      "Almost there! Follow me first, then tap “I'm Following” and I'll send your link.",
+    commenterName,
+  });
+}
+
 function buildInlineLinkFallback(
   message: string,
   commenterName: string | null | undefined,
