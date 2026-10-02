@@ -851,7 +851,7 @@ private fun CampaignsScreen(api: ApiClient) {
         })
     }
     if (showImport) {
-        CampaignImportDialog(api, accountId, onClose = { showImport = false }, onDone = { showImport = false; load() })
+        CampaignImportDialog(api, onClose = { showImport = false }, onDone = { showImport = false; load() })
     }
 }
 
@@ -936,7 +936,6 @@ private fun CampaignDetailDialog(
 @Composable
 private fun CampaignImportDialog(
     api: ApiClient,
-    selectedAccountId: String,
     onClose: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -944,8 +943,22 @@ private fun CampaignImportDialog(
     var preview by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var importing by remember { mutableStateOf(false) }
+    var selectedAccountId by remember { mutableStateOf("") }
+    var accounts by remember { mutableStateOf<JsonArray?>(null) }
+
+    LaunchedEffect(Unit) {
+        runCatching {
+            val d = api.get("/api/instagram/accounts").getAsJsonObject("data")
+            accounts = d.getAsJsonArray("instagramAccounts")
+            if (selectedAccountId.isBlank()) {
+                selectedAccountId = d.get("selectedInstagramAccountId")?.asString
+                    ?: accounts?.firstOrNull()?.asJsonObject?.get("id")?.asString.orEmpty()
+            }
+        }
+    }
 
     fun parse() {
+        if (selectedAccountId.isBlank()) { error = "Connect an Instagram account first."; return }
         val lines = csv.lines().map { it.trim() }.filter { it.isNotBlank() }
         if (lines.size < 2) { error = "Add a CSV header and at least one row."; return }
         val headers = lines.first().split(",").map { it.trim().lowercase() }
@@ -966,6 +979,16 @@ private fun CampaignImportDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Paste CSV. Required: keywords, dm_message. Optional: name, public_reply, tracked_url, opening_dm, opening_dm_button.", color = Color.Gray, fontSize = 12.sp)
+                if ((accounts?.size() ?: 0) > 1) {
+                    Text("Instagram account", color = Color.Gray, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        accounts?.asList()?.forEach { item ->
+                            val a = item.asJsonObject
+                            val id = a.get("id")?.asString ?: return@forEach
+                            FilterChip(selected = selectedAccountId == id, onClick = { selectedAccountId = id }, label = { Text("@" + a.get("username")?.asString.orEmpty()) })
+                        }
+                    }
+                }
                 OutlinedTextField(value = csv, onValueChange = { csv = it }, modifier = Modifier.fillMaxWidth().height(180.dp), label = { Text("CSV") })
                 TextButton(onClick = { csv = "name,keywords,dm_message\nExample,LINK,Here is your link" }) { Text("Fill with a sample") }
                 Button(onClick = { parse() }, modifier = Modifier.fillMaxWidth()) { Text("Review and import") }
