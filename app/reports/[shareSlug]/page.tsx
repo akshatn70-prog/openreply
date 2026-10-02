@@ -303,7 +303,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
 
         {report.branded && (
           <footer className="mt-8 border-t border-white/10 pt-6 text-center text-xs text-zinc-500">
-            {t("Built with OpenReply, the Instagram comment-to-DM campaign OS.")}
+            {"Built with thehomeodoc, the Instagram comment-to-DM campaign OS."}
           </footer>
         )}
       </section>
