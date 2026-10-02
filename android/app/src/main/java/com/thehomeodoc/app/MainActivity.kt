@@ -795,7 +795,7 @@ private fun CampaignsScreen(api: ApiClient) {
                                 onCheckedChange = { checked ->
                                     appScope.launch(Dispatchers.IO) {
                                         val body = JsonObject().apply { addProperty("isActive", checked) }
-                                        runCatching { api.patch("/api/automations?id=" + id, body) }
+                                        try { api.patch("/api/automations?id=" + id, body) } catch (_: Exception) { }
                                         withContext(Dispatchers.Main) { load() }
                                     }
                                 }
@@ -883,7 +883,7 @@ private fun CampaignDetailDialog(
         busy = true
         appScope.launch(Dispatchers.IO) {
             val body = JsonObject().apply { addProperty("isActive", !(current.get("isActive")?.asBoolean == true)) }
-            runCatching { api.patch("/api/automations?id=" + id, body) }
+            try { api.patch("/api/automations?id=" + id, body) } catch (_: Exception) { }
             withContext(Dispatchers.Main) {
                 val copy = JsonObject()
                 current.entrySet().forEach { copy.add(it.key, it.value) }
@@ -1675,9 +1675,10 @@ private fun AnalyticsScreen(api: ApiClient) {
     var data by remember { mutableStateOf<JsonObject?>(null) }
     fun load() {
         appScope.launch(Dispatchers.IO) {
-            runCatching { api.get("/api/instagram/overview?count=30").getAsJsonObject("data") }.onSuccess {
-                appScope.launch(Dispatchers.Main) { data = it }
-            }
+            try {
+                val result = api.get("/api/instagram/overview?count=30").getAsJsonObject("data")
+                withContext(Dispatchers.Main) { data = result }
+            } catch (_: Exception) { }
         }
     }
     LaunchedEffect(Unit) { load() }
@@ -1792,7 +1793,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
                                 busy = true
                                 appScope.launch(Dispatchers.IO) {
                                     val body = JsonObject().apply { addProperty("instagramAccountId", a.get("id").asString) }
-                                    runCatching { api.post("/api/instagram/disconnect", body) }
+                                    try { api.post("/api/instagram/disconnect", body) } catch (_: Exception) { }
                                     withContext(Dispatchers.Main) { busy = false; load() }
                                 }
                             }) { Text("Disconnect") }
@@ -1845,7 +1846,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
                                 TextButton(onClick = {
                                     appScope.launch(Dispatchers.IO) {
                                         val b = JsonObject().apply { addProperty("invitationId", inv.get("id").asString) }
-                                        runCatching { api.delete("/api/workspace/members", b) }
+                                        try { api.delete("/api/workspace/members", b) } catch (_: Exception) { }
                                         withContext(Dispatchers.Main) { load() }
                                     }
                                 }) { Text("Revoke") }
