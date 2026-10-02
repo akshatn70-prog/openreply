@@ -69,7 +69,22 @@ jobs:
           git push
 
       - name: Run tests
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee tests.log
+          status=${PIPESTATUS[0]}
+          exit ${status}
+      - name: Persist test error
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp tests.log CI_TEST_ERROR.log
+          git add CI_TEST_ERROR.log
+          git commit -m "ci: capture test error" || exit 0
+          git push
 
       - name: Build
         run: npm run build
