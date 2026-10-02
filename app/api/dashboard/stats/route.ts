@@ -150,26 +150,35 @@ export async function GET(request: NextRequest) {
   ]);
 
   const dailyDMs: { date: string; count: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
+  const dailyRanges = Array.from({ length: 7 }, (_, index) => {
+    const daysAgo = 6 - index;
     const dayStart = new Date(todayStart);
-    dayStart.setDate(dayStart.getDate() - i);
+    dayStart.setDate(dayStart.getDate() - daysAgo);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
+    return { dayStart, dayEnd };
+  });
 
-    const count = await prisma.dmLog.count({
-      where: {
-        workspaceId,
-        status: "SENT",
-        createdAt: { gte: dayStart, lt: dayEnd },
-        ...accountFilter,
-      },
-    });
+  const dailyCounts = await Promise.all(
+    dailyRanges.map(({ dayStart, dayEnd }) =>
+      prisma.dmLog.count({
+        where: {
+          workspaceId,
+          status: "SENT",
+          createdAt: { gte: dayStart, lt: dayEnd },
+          ...accountFilter,
+        },
+      })
+    )
+  );
 
+  dailyCounts.forEach((count, index) => {
+    const dayStart = dailyRanges[index].dayStart;
     dailyDMs.push({
       date: dayStart.toLocaleDateString("en-US", { weekday: "short" }),
       count,
     });
-  }
+  });
 
   const monthlyStatusSummary = summarizeDmStatuses(
     dmStatusCountsThisMonth.map((row) => ({
