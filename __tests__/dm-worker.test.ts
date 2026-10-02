@@ -1290,6 +1290,44 @@ describe("DM Worker — follow-gate re-check", () => {
     );
   });
 
+  it("re-checks an unverifiable follow before failing open", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue(gated);
+    mockGetUserFollowStatus.mockResolvedValue(null);
+
+    await getProcessor()(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "followcheck:auto_789",
+      })
+    );
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      "process-postback",
+      expect.objectContaining({ followRecheck: true, followRecheckAttempt: 1 }),
+      expect.objectContaining({ delay: 5_000 })
+    );
+  });
+
+  it("fails open only after the final unverifiable follow check", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue(gated);
+    mockGetUserFollowStatus.mockResolvedValue(null);
+
+    await getProcessor()(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "followcheck:auto_789",
+        followRecheck: true,
+        followRecheckAttempt: 1,
+      })
+    );
+
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
   it("prompts and records the rejection when the last re-check still finds no follow", async () => {
     mockPrisma.automation.findFirst.mockResolvedValue(gated);
     mockGetUserFollowStatus.mockResolvedValue(false);
