@@ -56,6 +56,7 @@ interface LoadedCampaign {
   publicReplyMessages: string[];
   isActive: boolean;
   instagramAccountId: string;
+  instagramAccount?: { username: string };
   trackedLinks?: { destinationUrl: string; label?: string | null }[];
 }
 
@@ -297,7 +298,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         );
         setFollowPromptProfileUrl(
           c.followPromptProfileUrl ??
-            `https://www.instagram.com/${c.instagramAccountId ? (accounts.find((a) => a.id === c.instagramAccountId)?.username ?? username) : username}/`
+            `https://www.instagram.com/${c.instagramAccount?.username ?? username}/`
         );
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
