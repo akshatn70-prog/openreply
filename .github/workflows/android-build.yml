@@ -1,5 +1,8 @@
 name: Android build
 
+permissions:
+  contents: write
+
 on:
   push:
     paths:
@@ -32,6 +35,16 @@ jobs:
         with:
           name: thehomeodoc-android-build-log
           path: android-build.log
+      - name: Persist Android compiler error
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp android-build.log ANDROID_BUILD_ERROR.log
+          git add ANDROID_BUILD_ERROR.log
+          git commit -m "ci: capture Android build error" || exit 0
+          git push
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
