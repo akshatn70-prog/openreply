@@ -52,7 +52,6 @@ import {
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 
-import { ZernioApiError } from "@/lib/zernio/client";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -633,9 +632,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         recipientId: commenterId,
       });
       sendFollowPrompt =
-        accessToken.provider === "ZERNIO"
-          ? alreadyFollows === false
-          : alreadyFollows !== true;
+        alreadyFollows !== true;
     }
 
     let claimed;
@@ -1393,9 +1390,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         recipientId: senderId,
       });
       sendFollowPrompt =
-        accessToken.provider === "ZERNIO"
-          ? follows === false
-          : follows !== true;
+        follows !== true;
     }
 
     const usage = await reserveWorkspaceDMSend(automation.workspaceId);
