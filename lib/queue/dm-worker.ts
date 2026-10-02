@@ -563,7 +563,21 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       continue;
     }
 
-    const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+    const revealCommentId = `reveal:${userId}`;
+  const existingReveal = await prisma.dmLog.findUnique({
+    where: {
+      automationId_commentId: {
+        automationId: automation.id,
+        commentId: revealCommentId,
+      },
+    },
+    select: { status: true, dmDeliveryUnconfirmed: true },
+  });
+  if (existingReveal?.status === "SENT" || existingReveal?.dmDeliveryUnconfirmed) {
+    return;
+  }
+
+  const usage = await reserveWorkspaceDMSend(automation.workspaceId);
     if (!usage.allowed) {
       await prisma.dmLog.update({
         where: {
@@ -1242,7 +1256,23 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     return;
   }
 
+  let revealClaimed = false;
   try {
+    revealClaimed = await claimUserRevealDelivery({
+      automationId: automation.id,
+      workspaceId: automation.workspaceId,
+      instagramAccountId: automation.instagramAccountId,
+      userId,
+      commenterName,
+    });
+    if (!revealClaimed) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart,
+      );
+      return;
+    }
+
     const delivered = await sendPostbackOnce({
       operationId,
       send: () =>
@@ -1283,6 +1313,22 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         },
       );
     }
+    if (revealClaimed) {
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId: revealCommentId,
+          },
+        },
+        data: {
+          status: "SENT",
+          dmSentAt: new Date(),
+          dmDeliveryUnconfirmed: false,
+          errorMessage: null,
+        },
+      });
+    }
     await prisma.dmLog.upsert({
       where: {
         automationId_commentId: {
@@ -1305,6 +1351,21 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     });
   } catch (originalError) {
     const error = classifySendError(originalError);
+    if (revealClaimed) {
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId: revealCommentId,
+          },
+        },
+        data: {
+          status: "FAILED",
+          errorMessage: formatError(error),
+          dmDeliveryUnconfirmed: isDeliveryUnconfirmed(error),
+        },
+      }).catch(() => {});
+    }
     if (isConfirmedSendRejection(error)) await releaseWorkspaceDMReservation(
       automation.workspaceId,
       usage.periodStart,
