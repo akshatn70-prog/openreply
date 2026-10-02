@@ -5,8 +5,10 @@ const {
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
   mockSendPrivateReplyWithButton,
+  mockSendPrivateReplyWithButtons,
   mockGetUserFollowStatus,
   mockSendDirectMessageWithButton,
+  mockSendDirectMessageWithButtons,
   mockSendDirectMessage,
   mockSendDirectMessageWithLinkButton,
   mockDecryptToken,
@@ -284,9 +286,17 @@ beforeEach(() => {
     recipient_id: "commenter_999",
     message_id: "msg_003",
   });
+  mockSendPrivateReplyWithButtons.mockResolvedValue({
+    recipient_id: "commenter_999",
+    message_id: "msg_003b",
+  });
   mockSendDirectMessageWithButton.mockResolvedValue({
     recipient_id: "commenter_999",
     message_id: "msg_004",
+  });
+  mockSendDirectMessageWithButtons.mockResolvedValue({
+    recipient_id: "commenter_999",
+    message_id: "msg_004b",
   });
   mockSendDirectMessage.mockResolvedValue({
     recipient_id: "commenter_999",
@@ -800,7 +810,7 @@ describe("DM Worker — Full Pipeline", () => {
 
     // Non-follower on a read fallback: no link, and no re-prompt spam either.
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
-    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButtons).not.toHaveBeenCalled();
     expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
   });
 
@@ -826,7 +836,7 @@ describe("DM Worker — Full Pipeline", () => {
     );
 
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
-    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButtons).not.toHaveBeenCalled();
   });
 
   it("should deliver a follow-gated read fallback once the user follows", async () => {
@@ -1139,7 +1149,7 @@ describe("DM Worker — DM keyword trigger", () => {
         },
         {
           type: "postback",
-          title: "I'm following",
+          title: "I'm Following",
           payload: "followcheck:auto_789",
         },
       ]
@@ -1158,7 +1168,7 @@ describe("DM Worker — DM keyword trigger", () => {
     const processor = getProcessor();
     await processor(createMockMessageJob());
 
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalled();
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
   });
 
@@ -1271,7 +1281,7 @@ describe("DM Worker — follow-gate re-check", () => {
     );
 
     // Nothing is sent yet: a brand-new follow may simply not have registered.
-    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButtons).not.toHaveBeenCalled();
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "process-postback",
@@ -1294,7 +1304,7 @@ describe("DM Worker — follow-gate re-check", () => {
       })
     );
 
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalledTimes(1);
     expect(mockPrisma.operationalEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -1344,7 +1354,7 @@ describe("DM Worker — follow-gate re-check", () => {
       createMockPostbackJob({ ...tap, followRecheck: true, followRecheckAttempt: 1 })
     );
     expect(mockQueueAdd).toHaveBeenCalledTimes(1);
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalledTimes(1);
   });
 
   it("treats a re-check queued before counting existed as the first one done", async () => {
@@ -1361,7 +1371,7 @@ describe("DM Worker — follow-gate re-check", () => {
     );
 
     expect(mockQueueAdd).not.toHaveBeenCalled();
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalledTimes(1);
   });
 
   it("prompts a non-follower right away when the tap came from the opening DM", async () => {
@@ -1378,7 +1388,7 @@ describe("DM Worker — follow-gate re-check", () => {
 
     // Tapping the opening DM is not a claim to follow, so there is nothing to
     // wait for: the follow prompt goes out now, not after the re-check delay.
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalledWith(
       "decrypted_token",
       "ig_456",
       "commenter_999",
