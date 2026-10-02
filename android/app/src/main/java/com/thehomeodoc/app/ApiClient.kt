@@ -15,12 +15,14 @@ class ApiClient(private val store: SessionStore) {
 
     fun get(path: String): JsonObject = request("GET", path, null)
     fun post(path: String, body: JsonObject = JsonObject()): JsonObject = request("POST", path, gson.toJson(body))
+    fun patch(path: String, body: JsonObject = JsonObject()): JsonObject = request("PATCH", path, gson.toJson(body))
     fun delete(path: String, body: JsonObject = JsonObject()): JsonObject = request("DELETE", path, gson.toJson(body))
 
     private fun request(method: String, path: String, body: String?): JsonObject {
         val builder = Request.Builder().url(base + path).header("Accept", "application/json")
         store.token?.let { builder.header("Authorization", "Bearer $it") }
         if (method == "POST") builder.post((body ?: "{}").toRequestBody(json))
+        if (method == "PATCH") builder.patch((body ?: "{}").toRequestBody(json))
         if (method == "DELETE") builder.delete((body ?: "{}").toRequestBody(json))
         val response = http.newCall(builder.build()).execute()
         val text = response.body?.string().orEmpty()
