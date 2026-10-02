@@ -23,6 +23,7 @@ import {
   getDMQueue,
   readDMJobs,
   deleteDMJob,
+  archiveFailedDMJob,
   closeDMQueue,
   claimDMAction,
   MESSAGE_JOB_NAME,
@@ -1866,6 +1867,16 @@ export function createDMWorker(): { close: () => Promise<void> } {
 
             if (terminal) {
               await recordWorkerFailure(job, err);
+              // Keep a durable failed-job record for 24 hours before cleanup.
+              // Only delete the live PGMQ message after the archive succeeds;
+              // otherwise a database failure here would lose the failed job.
+              await archiveFailedDMJob({
+                id: job.id,
+                name: job.name,
+                data: job.data,
+                attemptsMade: attempts,
+                errorMessage: err.message,
+              });
               await deleteDMJob(job.id);
               console.error(
                 `[DM Worker] Job ${job.id} failed permanently (attempt ${attempts}):`,
