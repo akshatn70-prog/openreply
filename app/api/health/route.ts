@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { getDMQueue, getRedisConnection } from "@/lib/queue/client";
+import { getDMQueueCounts } from "@/lib/queue/client";
 import { getWorkerHealth } from "@/lib/ops/worker-health";
 
 export const runtime = "nodejs";
