@@ -6,13 +6,14 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "vercel-build": "prisma generate && prisma migrate deploy && next build",
-    "start": "next start",
+    "start": "node scripts/start-production.js",
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "worker": "tsx worker/dm-worker.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start:web": "next start"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
