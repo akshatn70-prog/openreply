@@ -50,8 +50,28 @@ process.on("exit", () => {
   }
 });
 
-console.log("[OpenReply] Starting Next.js web server...");
-start(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "start:web"], "Web");
+console.log("[OpenReply] Applying pending database migrations...");
+const migration = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["prisma", "migrate", "deploy"], {
+  stdio: "inherit",
+  env: process.env,
+  shell: false,
+});
+
+migration.on("error", (error) => {
+  console.error("[OpenReply] Database migration failed to start:", error);
+  process.exit(1);
+});
+
+migration.on("exit", (code, signal) => {
+  if (code !== 0 || signal != null) {
+    console.error(`[OpenReply] Database migrations failed (code=${code ?? "null"}, signal=${signal ?? "none"})`);
+    process.exit(code ?? 1);
+  }
+
+  console.log("[OpenReply] Database migrations complete.");
+  console.log("[OpenReply] Starting Next.js web server...");
+  start(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "start:web"], "Web");
+});
 
 console.log("[OpenReply] Starting DM worker...");
 start(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "worker"], "Worker");
