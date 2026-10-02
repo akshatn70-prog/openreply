@@ -4,7 +4,7 @@
  * Replaces BullMQ + Redis for DM processing. The queue itself is stored in
  * Supabase Postgres via PGMQ. Successful jobs are deleted immediately.
  */
-import { Pool } from "pg";
+import { Pool, type QueryResultRow } from "pg";
 
 let pool: Pool | null = null;
 
@@ -103,7 +103,7 @@ export interface DmQueueCounts {
   failed: number;
 }
 
-async function query<T = unknown>(text: string, values: unknown[] = []) {
+async function query<T extends QueryResultRow = QueryResultRow>(text: string, values: unknown[] = []) {
   return getQueuePool().query<T>(text, values);
 }
 
