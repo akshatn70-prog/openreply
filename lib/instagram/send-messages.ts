@@ -47,6 +47,28 @@ export async function sendPrivateReplyWithButton({
   );
 }
 
+export async function sendDirectMessageWithButtons({
+  context,
+  instagramAccountId,
+  userId,
+  text,
+  buttons,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  userId: string;
+  text: string;
+  buttons: meta.MessageButton[];
+}) {
+  return meta.sendDirectMessageWithButtons(
+    context.accessToken,
+    instagramAccountId,
+    userId,
+    text,
+    buttons
+  );
+}
+
 export async function sendDirectMessageWithButton({
   context,
   instagramAccountId,
@@ -69,6 +91,28 @@ export async function sendDirectMessageWithButton({
     text,
     buttonTitle,
     payload
+  );
+}
+
+export async function sendPrivateReplyWithButtons({
+  context,
+  instagramAccountId,
+  commentId,
+  text,
+  buttons,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  commentId: string;
+  text: string;
+  buttons: meta.MessageButton[];
+}) {
+  return meta.sendPrivateReplyWithButtons(
+    context.accessToken,
+    instagramAccountId,
+    commentId,
+    text,
+    buttons
   );
 }
 
