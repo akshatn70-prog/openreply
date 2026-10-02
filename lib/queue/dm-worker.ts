@@ -1199,7 +1199,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           data: {
             workspaceId: automation.workspaceId,
             source: "WORKER",
-            level: "WARN",
+            level: "WARNING",
             message: "Follow gate verification remained unavailable; failing open",
             payload: {
               automationId: automation.id,
