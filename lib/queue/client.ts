@@ -151,6 +151,25 @@ export async function deleteDMJob(messageId: string): Promise<void> {
   await query("select pgmq.delete('dm_processing',$1::bigint)", [messageId]);
 }
 
+export async function archiveFailedDMJob(job: {
+  id: string;
+  name: string;
+  data: DmQueueJob;
+  attemptsMade: number;
+  errorMessage: string;
+}): Promise<void> {
+  await query(
+    "insert into public.openreply_failed_dm_job(job_id, queue_name, job_name, payload, attempts, error_message) values ($1, 'dm_processing', $2, $3::jsonb, $4, $5) on conflict (job_id) do update set job_name = excluded.job_name, payload = excluded.payload, attempts = excluded.attempts, error_message = excluded.error_message, failed_at = now()",
+    [
+      job.id,
+      job.name,
+      JSON.stringify(job.data),
+      job.attemptsMade,
+      job.errorMessage,
+    ],
+  );
+}
+
 export async function claimDMAction(dedupKey: string): Promise<boolean> {
   const result = await query<{ claimed: boolean }>(
     `with inserted as (
