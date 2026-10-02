@@ -299,53 +299,96 @@ private fun Screen(title: String, refresh: (() -> Unit)? = null, content: @Compo
     }
 }
 
+
 @Composable
 private fun DashboardScreen(api: ApiClient) {
     var data by remember { mutableStateOf<JsonObject?>(null) }
+    var accountId by remember { mutableStateOf("all") }
     var error by remember { mutableStateOf<String?>(null) }
+
     fun load() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val d = api.get("/api/dashboard/stats").getAsJsonObject("data")
+                val path = "/api/dashboard/stats" + if (accountId != "all") "?instagramAccountId=" + accountId else ""
+                val d = api.get(path).getAsJsonObject("data")
                 withContext(Dispatchers.Main) { data = d; error = null }
-            } catch (e: Exception) { withContext(Dispatchers.Main) { error = e.message } }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { error = e.message }
+            }
         }
     }
-    LaunchedEffect(Unit) { load() }
+
+    LaunchedEffect(accountId) { load() }
+
     Screen("Dashboard", ::load) {
         error?.let { ErrorText(it) }
         data?.let { d ->
-            Text("Welcome ${d.get("userName")?.asString ?: ""}", color = Color.LightGray)
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Active", d.int("activeAutomations"), Modifier.weight(1f))
-                StatCard("DMs today", d.int("dmsSentToday"), Modifier.weight(1f))
+            val accounts = d.getAsJsonArray("instagramAccounts") ?: JsonArray()
+            Text("Hello, " + (d.get("userName")?.asString ?: "there") + "!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(
+                (accounts.size()).toString() + if (accounts.size() == 1) " connected account" else " connected accounts" +
+                    " • " + (d.get("contactsCount")?.asInt ?: 0) + " contacts",
+                color = Color.Gray
+            )
+            if (accounts.size() > 1) {
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = accountId == "all", onClick = { accountId = "all" }, label = { Text("All") })
+                    accounts.asList().forEach { item ->
+                        val a = item.asJsonObject
+                        val id = a.get("id")?.asString ?: return@forEach
+                        FilterChip(selected = accountId == id, onClick = { accountId = id }, label = { Text("@" + (a.get("username")?.asString ?: "")) })
+                    }
+                }
             }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Clicks", d.int("clicksThisMonth"), Modifier.weight(1f))
-                StatCard("Contacts", d.int("contactsCount"), Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(18.dp))
-            Text("Recent activity", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-            Spacer(Modifier.height(8.dp))
-            val logs = d.getAsJsonArray("recentLogs") ?: JsonArray()
-            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(logs.asList()) { item ->
+            Spacer(Modifier.height(14.dp))
+            val cards = listOf(
+                "Active Campaigns" to (d.get("activeAutomations")?.asInt ?: 0),
+                "DMs Sent" to (d.get("dmsSentMonth")?.asInt ?: 0),
+                "Skipped" to (d.get("dmsSkippedMonth")?.asInt ?: 0),
+                "Failed" to (d.get("dmsFailedMonth")?.asInt ?: 0),
+                "Clicks" to (d.get("clicksThisMonth")?.asInt ?: 0)
+            )
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(cards.chunked(2)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { (label, value) -> StatCard(label, value, Modifier.weight(1f)) }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                item {
+                    Text("DMs — Last 7 Days", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    d.getAsJsonArray("dailyDMs")?.asList()?.forEach { day ->
+                        val o = day.asJsonObject
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(o.get("date")?.asString ?: "", color = Color.Gray)
+                            Text((o.get("count")?.asInt ?: 0).toString(), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Top Keywords", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    d.getAsJsonArray("topKeywords")?.asList()?.forEach { item ->
+                        val k = item.asJsonObject
+                        Text((k.get("keyword")?.asString ?: "") + " • " + (k.get("count")?.asInt ?: 0), color = Color.Gray)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Recent Activity", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                }
+                items(d.getAsJsonArray("recentLogs")?.asList() ?: emptyList()) { item ->
                     val o = item.asJsonObject
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(o.getAsJsonObject("automation")?.get("name")?.asString ?: "DM")
+                        Column(Modifier.padding(12.dp)) {
+                            Text("@" + (o.get("commenterName")?.asString ?: "unknown"), fontWeight = FontWeight.SemiBold)
                             Text(o.get("commentText")?.asString ?: "", color = Color.Gray, maxLines = 2)
                             Text(o.get("status")?.asString ?: "", color = Accent, fontSize = 12.sp)
                         }
                     }
                 }
             }
-        } ?: run { if (error == null) Loading() }
+        } ?: Loading()
     }
 }
-
 
 @Composable
 private fun OverviewScreen(api: ApiClient) {
