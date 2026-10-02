@@ -868,21 +868,21 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 />
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label className="text-xs text-muted">{t("Visit Profile button")}</label>
+                    <label className="text-xs text-muted">Visit Profile button</label>
                     <input
                       value={followPromptProfileButtonLabel}
                       onChange={(e) => setFollowPromptProfileButtonLabel(e.target.value)}
-                      placeholder={t("Visit Profile")}
+                      placeholder=Visit Profile
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                       maxLength={20}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs text-muted">{t("I'm Following button")}</label>
+                    <label className="text-xs text-muted">I'm Following button</label>
                     <input
                       value={followPromptButtonLabel}
                       onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                      placeholder={t("I'm Following")}
+                      placeholder=I'm Following
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                       maxLength={20}
                     />
@@ -897,10 +897,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   type="url"
                 />
                 <p className="text-xs text-muted">
-                  {t("Visit Profile opens this URL. It defaults to the connected Instagram profile.")}
+                  Visit Profile opens this URL. It defaults to the connected Instagram profile.
                 </p>
                 <p className="text-xs text-muted">
-                  {t("The follow check retries when Instagram cannot verify. If it still cannot be verified, the campaign DM is sent once. If they are not following, the follow message is sent again.")}
+                  The follow check retries when Instagram cannot verify. If it still cannot be verified, the campaign DM is sent once. If they are not following, the follow message is sent again.
                 </p>
               </div>
             )}
