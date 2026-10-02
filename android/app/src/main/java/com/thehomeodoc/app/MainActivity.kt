@@ -1937,8 +1937,8 @@ private fun Field(value: String, label: String, onChange: (String) -> Unit) {
 
 @Composable
 private fun Loading() {
-    val appScope = rememberCoroutineScope() Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+    Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
 @Composable
 private fun ErrorText(text: String) {
-    val appScope = rememberCoroutineScope() Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+    Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
 private fun JsonObject.int(name: String): Int = get(name)?.asInt ?: 0
