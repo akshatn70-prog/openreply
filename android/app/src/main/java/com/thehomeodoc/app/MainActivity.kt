@@ -1133,50 +1133,206 @@ private fun AnalyticsScreen(api: ApiClient) {
     }
 }
 
+
 @Composable
 private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
     val context = LocalContext.current
     var accounts by remember { mutableStateOf<JsonArray?>(null) }
+    var members by remember { mutableStateOf<JsonObject?>(null) }
+    var workspace by remember { mutableStateOf<JsonObject?>(null) }
+    var inviteEmail by remember { mutableStateOf("") }
+    var inviteRole by remember { mutableStateOf("MEMBER") }
+    var message by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
     fun load() {
         GlobalScope.launch(Dispatchers.IO) {
-            runCatching { api.get("/api/instagram/accounts").getAsJsonObject("data").getAsJsonArray("instagramAccounts") }.onSuccess {
-                GlobalScope.launch(Dispatchers.Main) { accounts = it }
+            try {
+                val stats = api.get("/api/dashboard/stats").getAsJsonObject("data")
+                val accountData = api.get("/api/instagram/accounts").getAsJsonObject("data")
+                val memberData = api.get("/api/workspace/members").getAsJsonObject("data")
+                withContext(Dispatchers.Main) {
+                    workspace = stats.getAsJsonObject("workspace")
+                    accounts = accountData.getAsJsonArray("instagramAccounts")
+                    members = memberData
+                    message = null
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { message = e.message ?: "Failed to load settings." }
             }
         }
     }
+
     LaunchedEffect(Unit) { load() }
+
     Screen("Settings", ::load) {
-        Text("Instagram accounts", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        accounts?.let { list ->
-            if (list.size() == 0) Text("No Instagram account connected.", color = Color.Gray)
-            list.asList().forEach { item ->
-                val a = item.asJsonObject
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("@${a.get("username")?.asString ?: ""}", fontWeight = FontWeight.Bold)
-                            Text(a.get("name")?.asString ?: "", color = Color.Gray)
-                        }
-                        TextButton(onClick = {
-                            GlobalScope.launch(Dispatchers.IO) {
-                                val b = JsonObject().apply { addProperty("instagramAccountId", a.get("id").asString) }
-                                runCatching { api.post("/api/instagram/disconnect", b) }
-                                withContext(Dispatchers.Main) { load() }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                SettingsPanel("Interface language") {
+                    Text("English", fontWeight = FontWeight.SemiBold)
+                    Text("Saved in this app. Campaign messages stay unchanged.", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+
+            item {
+                SettingsPanel("Instagram Connection") {
+                    val connected = (accounts?.size() ?: 0) > 0
+                    Text(
+                        if (connected) "Connected" else "Not connected",
+                        color = if (connected) Color(0xFF7DD3A5) else Color(0xFFFBBF24)
+                    )
+                    Text(
+                        if ((accounts?.size() ?: 0) == 1) "1 connected Instagram profile"
+                        else (accounts?.size() ?: 0).toString() + " connected Instagram profiles",
+                        color = Color.Gray, fontSize = 12.sp
+                    )
+
+                    accounts?.asList()?.forEach { item ->
+                        val a = item.asJsonObject
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("@" + (a.get("username")?.asString ?: ""), fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Token expires " + (a.get("tokenExpiresAt")?.asString ?: "not available") +
+                                        " • " + if (a.get("webhookSubscribed")?.asBoolean == true) "Webhook ready" else "Webhook pending",
+                                    color = Color.Gray, fontSize = 11.sp
+                                )
                             }
-                        }) { Text("Disconnect") }
+                            TextButton(enabled = !busy, onClick = {
+                                busy = true
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    val body = JsonObject().apply { addProperty("instagramAccountId", a.get("id").asString) }
+                                    runCatching { api.post("/api/instagram/disconnect", body) }
+                                    withContext(Dispatchers.Main) { busy = false; load() }
+                                }
+                            }) { Text("Disconnect") }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            CustomTabsIntent.Builder().build().launchUrl(
+                                context,
+                                Uri.parse(BuildConfig.API_BASE_URL + "/api/instagram/connect")
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Connect using your own Meta app")
                     }
                 }
-                Spacer(Modifier.height(8.dp))
             }
-        } ?: Loading()
-        Button(onClick = {
-            val uri = Uri.parse("${BuildConfig.API_BASE_URL}/api/instagram/connect")
-            CustomTabsIntent.Builder().build().launchUrl(context, uri)
-        }, modifier = Modifier.fillMaxWidth()) { Text("Connect Instagram") }
-        Spacer(Modifier.height(18.dp))
-        OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Sign out")
+
+            item {
+                SettingsPanel("Team") {
+                    val currentRole = members?.get("currentUserRole")?.asString ?: "MEMBER"
+                    members?.getAsJsonArray("members")?.asList()?.forEach { item ->
+                        val m = item.asJsonObject
+                        val u = m.getAsJsonObject("user")
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(u?.get("name")?.asString ?: u?.get("email")?.asString ?: "Unknown member")
+                                Text(u?.get("email")?.asString ?: "", color = Color.Gray, fontSize = 11.sp)
+                            }
+                            Text(m.get("role")?.asString ?: "MEMBER", color = Color.Gray, fontSize = 12.sp)
+                        }
+                    }
+
+                    val invitations = members?.getAsJsonArray("invitations")?.asList().orEmpty()
+                    if (invitations.isNotEmpty()) {
+                        Text("Pending invites", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
+                        invitations.forEach { item ->
+                            val inv = item.asJsonObject
+                            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(inv.get("email")?.asString ?: "")
+                                    Text(inv.get("inviteUrl")?.asString ?: "", color = Color.Gray, fontSize = 10.sp, maxLines = 1)
+                                }
+                                TextButton(onClick = {
+                                    val clip = context.getSystemService(ClipboardManager::class.java)
+                                    clip?.setPrimaryClip(ClipData.newPlainText("Invite URL", inv.get("inviteUrl")?.asString ?: ""))
+                                }) { Text("Copy") }
+                                TextButton(onClick = {
+                                    GlobalScope.launch(Dispatchers.IO) {
+                                        val b = JsonObject().apply { addProperty("invitationId", inv.get("id").asString) }
+                                        runCatching { api.delete("/api/workspace/members", b) }
+                                        withContext(Dispatchers.Main) { load() }
+                                    }
+                                }) { Text("Revoke") }
+                            }
+                        }
+                    }
+
+                    if (currentRole == "OWNER" || currentRole == "ADMIN") {
+                        Spacer(Modifier.height(8.dp))
+                        Field(inviteEmail, "teammate@agency.com") { inviteEmail = it }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            FilterChip(selected = inviteRole == "MEMBER", onClick = { inviteRole = "MEMBER" }, label = { Text("Member") })
+                            Spacer(Modifier.width(8.dp))
+                            FilterChip(selected = inviteRole == "ADMIN", onClick = { inviteRole = "ADMIN" }, label = { Text("Admin") })
+                        }
+                        Button(
+                            enabled = !busy && inviteEmail.contains("@"),
+                            onClick = {
+                                busy = true
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    val b = JsonObject().apply {
+                                        addProperty("email", inviteEmail.trim())
+                                        addProperty("role", inviteRole)
+                                    }
+                                    try {
+                                        api.post("/api/workspace/members", b)
+                                        withContext(Dispatchers.Main) {
+                                            inviteEmail = ""
+                                            busy = false
+                                            load()
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            busy = false
+                                            message = e.message ?: "Could not invite member."
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (busy) "Inviting..." else "Invite")
+                        }
+                    }
+                }
+            }
+
+            item {
+                SettingsPanel("Usage") {
+                    Text("DMs sent this month", fontWeight = FontWeight.SemiBold)
+                    Text((workspace?.get("dmsSentThisPeriod")?.asInt ?: 0).toString(), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Text("Self-hosted — no plan limits.", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+
+            item {
+                message?.let { ErrorText(it) }
+                OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Logout, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sign out")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPanel(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            content()
         }
     }
 }
