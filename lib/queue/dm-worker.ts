@@ -758,7 +758,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           context: accessToken,
           instagramAccountId: automation.instagramAccount.instagramId,
           commentId,
-          text: renderFollowPrompt(automation, commenterName),
+          text: renderFollowPrompt(automation, commenterName ?? null),
           buttons: buildFollowPromptButtons(automation),
           postId: mediaId,
         });
