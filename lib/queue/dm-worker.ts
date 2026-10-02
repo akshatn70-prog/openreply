@@ -123,7 +123,6 @@ function isTemplateRejection(error: unknown): boolean {
   if (
     error instanceof TokenExpiredError ||
     error instanceof RateLimitError ||
-    error instanceof ZernioApiError
   ) {
     return false;
   }
