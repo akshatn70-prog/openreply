@@ -607,6 +607,7 @@ private fun CampaignsScreen(api: ApiClient) {
     val context = LocalContext.current
     var campaigns by remember { mutableStateOf<JsonArray?>(null) }
     var showCreate by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<JsonObject?>(null) }
     var search by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("all") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -705,6 +706,7 @@ private fun CampaignsScreen(api: ApiClient) {
                                     clip?.setPrimaryClip(ClipData.newPlainText("Instagram URL", url))
                                 }) { Text("Copy URL") }
                             }
+                            TextButton(onClick = { editing = a }) { Text("Edit") }
                             TextButton(onClick = {
                                 GlobalScope.launch(Dispatchers.IO) {
                                     try {
@@ -735,10 +737,13 @@ private fun CampaignsScreen(api: ApiClient) {
     if (showCreate) {
         CreateCampaignDialog(api, { showCreate = false; load() })
     }
+    editing?.let { campaign ->
+        CreateCampaignDialog(api, { editing = null; load() }, campaign)
+    }
 }
 
 @Composable
-private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit) {
+private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: JsonObject? = null) {
     var name by remember { mutableStateOf("") }
     var accounts by remember { mutableStateOf<JsonArray?>(null) }
     var accountId by remember { mutableStateOf("") }
@@ -773,6 +778,43 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var previewTab by remember { mutableStateOf("DM") }
+
+
+    LaunchedEffect(existing) {
+        existing?.let { e ->
+            name = e.get("name")?.asString.orEmpty()
+            accountId = e.get("instagramAccountId")?.asString.orEmpty()
+            triggerScope = when {
+                e.get("pendingNextReel")?.asBoolean == true -> "next"
+                e.get("matchAnyPost")?.asBoolean == true -> "any"
+                else -> "specific"
+            }
+            postId = e.get("postId")?.asString
+            postUrl = e.get("postUrl")?.asString
+            matchAnyWord = e.get("matchAnyWord")?.asBoolean == true
+            keywords = e.getAsJsonArray("keywords")?.asList()?.joinToString(", ") { it.asString }.orEmpty()
+            dmTrigger = e.get("dmTriggerEnabled")?.asBoolean == true
+            publicReply = e.get("publicReplyEnabled")?.asBoolean == true
+            publicReplies = e.getAsJsonArray("publicReplyMessages")?.asList()?.map { it.asString }?.ifEmpty { listOf("") } ?: listOf("")
+            openingDm = e.get("openingDmEnabled")?.asBoolean == true
+            openingMessage = e.get("openingDmMessage")?.asString.orEmpty()
+            openingButton = e.get("openingDmButtonLabel")?.asString.orEmpty()
+            dmMessage = e.get("dmMessage")?.asString.orEmpty()
+            requireFollow = e.get("requireFollow")?.asBoolean == true
+            followPrompt = e.get("followPromptMessage")?.asString.orEmpty()
+            followButton = e.get("followPromptButtonLabel")?.asString ?: "I'm following"
+            followUp = e.get("followUpEnabled")?.asBoolean == true
+            followUpMessage = e.get("followUpMessage")?.asString.orEmpty()
+            followUpDelay = (e.get("followUpDelayMinutes")?.asInt ?: 0).toString()
+            val links = e.getAsJsonArray("trackedLinks")?.asList().orEmpty()
+            firstLink = links.getOrNull(0)?.asJsonObject?.get("destinationUrl")?.asString.orEmpty()
+            firstButton = links.getOrNull(0)?.asJsonObject?.get("label")?.asString ?: "Open link"
+            secondLink = links.getOrNull(1)?.asJsonObject?.get("destinationUrl")?.asString.orEmpty()
+            secondButton = links.getOrNull(1)?.asJsonObject?.get("label")?.asString ?: "Open link"
+            linkOpen = firstLink.isNotBlank()
+            secondLinkOpen = secondLink.isNotBlank()
+        }
+    }
 
     fun loadAccounts() {
         GlobalScope.launch(Dispatchers.IO) {
@@ -902,10 +944,10 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit) {
                     addProperty("followUpEnabled", followUp)
                     addProperty("followUpMessage", if (followUp) followUpMessage.trim() else "")
                     addProperty("followUpDelayMinutes", followUpDelay.toIntOrNull()?.coerceIn(0, 1440) ?: 0)
-                    addProperty("isActive", true)
+                    addProperty("isActive", existing?.get("isActive")?.asBoolean ?: true)
                     addProperty("wholeWordMatch", true)
                 }
-                api.post("/api/automations", body)
+                if (existing == null) api.post("/api/automations", body) else api.patch("/api/automations?id=" + existing.get("id").asString, body)
                 withContext(Dispatchers.Main) { onDone() }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -1081,7 +1123,7 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit) {
         },
         confirmButton = {
             Button(enabled = !saving, onClick = { save() }) {
-                Text(if (saving) "Saving…" else "Go Live")
+                Text(if (saving) "Saving…" else if (existing == null) "Go Live" else "Save changes")
             }
         },
         dismissButton = { TextButton(onClick = onDone, enabled = !saving) { Text("Cancel") } }
