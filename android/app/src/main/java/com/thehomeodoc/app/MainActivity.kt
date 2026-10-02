@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
         }
         scheduleNotifications()
         handleIntent(intent)
-        setContent { TheHomeDocApp(store, api, ::startLogin, ::logout) }
+        setContent { TheHomeDocApp(store, api, ::logout) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -88,15 +88,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startLogin() {
-        val callback = "${BuildConfig.API_BASE_URL}/mobile-auth-complete"
-        val login = Uri.parse("${BuildConfig.API_BASE_URL}/login")
-            .buildUpon()
-            .appendQueryParameter("callbackUrl", callback)
-            .build()
-        CustomTabsIntent.Builder().build().launchUrl(this, login)
-    }
-
     private fun logout() {
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { api.post("/api/mobile/auth/logout") }
@@ -114,28 +105,107 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun TheHomeDocApp(store: SessionStore, api: ApiClient, onLogin: () -> Unit, onLogout: () -> Unit) {
+private fun TheHomeDocApp(store: SessionStore, api: ApiClient, onLogout: () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = Dark, surface = Panel, primary = Accent,
             onPrimary = Color.White, onBackground = Color.White, onSurface = Color.White
         )
     ) {
-        if (store.token == null) LoginScreen(onLogin) else MainShell(api, onLogout)
+        if (store.token == null) LoginScreen(api) else MainShell(api, onLogout)
     }
 }
 
 @Composable
-private fun LoginScreen(onLogin: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Dark).padding(28.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+private fun LoginScreen(api: ApiClient) {
+    var email by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var sent by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Box(
+        Modifier.fillMaxSize().background(Dark).padding(28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
             Text("thehomeodoc", fontSize = 34.sp, fontWeight = FontWeight.Bold)
-            Text("Instagram comment-to-DM automation", color = Color.LightGray)
-            Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("Continue with email") }
-            Text("Secure sign-in opens in your browser. No website is embedded in the app.", fontSize = 12.sp, color = Color.Gray)
+            Text(
+                "Instagram comment-to-DM automation",
+                color = Color.LightGray
+            )
+
+            if (sent) {
+                Text(
+                    "Check your email",
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "We sent a secure sign-in link to $email. Tap the link in your email and you will return directly to the app.",
+                    color = Color.LightGray
+                )
+                TextButton(onClick = {
+                    sent = false
+                    error = null
+                }) {
+                    Text("Use another email")
+                }
+            } else {
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = {
+                        email = it
+                        error = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Email") },
+                    placeholder = { Text("you@company.com") },
+                    singleLine = true
+                )
+
+                Button(
+                    enabled = !sending && email.contains("@"),
+                    onClick = {
+                        sending = true
+                        error = null
+                        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                            try {
+                                val body = JsonObject().apply {
+                                    addProperty("email", email.trim())
+                                }
+                                api.post("/api/mobile/auth/request", body)
+                                withContext(Dispatchers.Main) {
+                                    sending = false
+                                    sent = true
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    sending = false
+                                    error = e.message ?: "Unable to send sign-in link."
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (sending) "Sending…" else "Send sign-in link")
+                }
+
+                error?.let { ErrorText(it) }
+
+                Text(
+                    "Your login is handled by the native app. The web dashboard is never opened for Android navigation.",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
         }
     }
 }
+
 
 private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     DASHBOARD("Home", Icons.Default.Home),
