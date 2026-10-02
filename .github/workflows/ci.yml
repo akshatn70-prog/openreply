@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -25,9 +28,24 @@ jobs:
         run: npm ci
 
       - name: Generate Prisma client
-        run: npm run db:generate
+        shell: bash
+        run: |
+          set +e
+          npm run db:generate 2>&1 | tee prisma-generate.log
+          status=${PIPESTATUS[0]}
+          exit ${status}
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/instrareply
+      - name: Persist CI error log
+        if: failure()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp prisma-generate.log CI_BUILD_ERROR.log
+          git add CI_BUILD_ERROR.log
+          git commit -m "ci: capture backend build error" || exit 0
+          git push
 
       - name: Typecheck
         run: npm run typecheck
