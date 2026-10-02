@@ -38,6 +38,8 @@ const sourceCampaign = {
   requireFollow: true,
   followPromptMessage: "Follow first, then tap below",
   followPromptButtonLabel: "i'm following",
+  followPromptProfileButtonLabel: "Visit Profile",
+  followPromptProfileUrl: "https://www.instagram.com/example/",
   followUpEnabled: true,
   followUpMessage: "Thanks for grabbing it!",
   followUpDelayMinutes: 30,
