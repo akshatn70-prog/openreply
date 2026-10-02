@@ -1,8 +1,5 @@
 name: CI
 
-permissions:
-  contents: write
-
 on:
   push:
     branches: [main]
@@ -28,78 +25,18 @@ jobs:
         run: npm ci
 
       - name: Generate Prisma client
-        shell: bash
-        run: |
-          set +e
-          npm run db:generate 2>&1 | tee prisma-generate.log
-          status=${PIPESTATUS[0]}
-          exit ${status}
+        run: npm run db:generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/instrareply
-      - name: Persist CI error log
-        if: failure()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp prisma-generate.log CI_BUILD_ERROR.log
-          git add CI_BUILD_ERROR.log
-          git commit -m "ci: capture backend build error" || exit 0
-          git push
 
       - name: Typecheck
-        shell: bash
-        run: |
-          set +e
-          npm run typecheck 2>&1 | tee typecheck.log
-          status=${PIPESTATUS[0]}
-          exit ${status}
-      - name: Persist typecheck error
-        if: failure()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp typecheck.log CI_TYPECHECK_ERROR.log
-          git add CI_TYPECHECK_ERROR.log
-          git commit -m "ci: capture typecheck error" || exit 0
-          git push
+        run: npm run typecheck
 
       - name: Lint
-        shell: bash
-        run: |
-          set +e
-          npm run lint 2>&1 | tee lint.log
-          status=${PIPESTATUS[0]}
-          exit ${status}
-      - name: Persist lint error
-        if: failure()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp lint.log CI_LINT_ERROR.log
-          git add CI_LINT_ERROR.log
-          git commit -m "ci: capture lint error" || exit 0
-          git push
+        run: npm run lint
 
       - name: Run tests
-        shell: bash
-        run: |
-          set +e
-          npm test 2>&1 | tee tests.log
-          status=${PIPESTATUS[0]}
-          exit ${status}
-      - name: Persist test error
-        if: failure()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp tests.log CI_TEST_ERROR.log
-          git add CI_TEST_ERROR.log
-          git commit -m "ci: capture test error" || exit 0
-          git push
+        run: npm test
 
       - name: Build
         run: npm run build
