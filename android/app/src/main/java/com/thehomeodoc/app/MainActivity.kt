@@ -357,6 +357,11 @@ private fun DashboardScreen(api: ApiClient) {
                     }
                 }
                 item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("See activity", color = Accent, modifier = Modifier.weight(1f))
+                        Text("CTR " + (d.get("ctrThisMonth")?.asDouble ?: 0.0) + "%", color = Color.Gray, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
                     Text("DMs — Last 7 Days", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     d.getAsJsonArray("dailyDMs")?.asList()?.forEach { day ->
@@ -1304,6 +1309,15 @@ private fun InboxScreen(api: ApiClient) {
     LaunchedEffect(active?.get("id")?.asString) {
         val id = active?.get("id")?.asString ?: return@LaunchedEffect
         loadMessages(id)
+    }
+
+    LaunchedEffect(accountId) {
+        if (accountId.isBlank()) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(12_000)
+            loadConversations()
+            active?.get("id")?.asString?.let { loadMessages(it) }
+        }
     }
 
     Screen("Inbox", ::loadConversations) {
