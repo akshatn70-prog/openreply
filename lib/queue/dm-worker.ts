@@ -65,10 +65,10 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 // people who did what was asked, and they get told to follow an account they
 // already follow.
 //
-// One re-check after 20 seconds. This keeps the follow gate responsive while
-// avoiding repeated checks after the user has already had a chance to follow.
+// One re-check after 5 seconds. This keeps the follow gate responsive
+// while giving Meta a short moment to reflect a brand-new follow.
 const FOLLOW_RECHECK_DELAYS_MS = (
-  process.env.FOLLOW_RECHECK_DELAYS_MS ?? "20000"
+  process.env.FOLLOW_RECHECK_DELAYS_MS ?? "5000"
 )
   .split(",")
   .map(Number)
