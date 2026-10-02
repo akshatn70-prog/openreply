@@ -3,7 +3,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TheHomeDoc - Instagram comment-to-DM automation",
+  title: "thehomeodoc - Instagram comment-to-DM automation",
   description:
     "A free, self-hosted Instagram comment-to-DM automation tool. Send an Instagram DM automatically when someone comments a keyword on your post or reel, using the official Meta API.",
   keywords: [
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "TheHomeDoc",
+    title: "thehomeodoc",
     statusBarStyle: "black-translucent",
   },
   icons: {
