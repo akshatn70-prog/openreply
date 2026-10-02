@@ -389,11 +389,7 @@ private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
                 }
                 items(d.getAsJsonArray("recentLogs")?.asList() ?: emptyList()) { item ->
                     val o = item.asJsonObject
-                    Card(
-                    onClick = { detail = a },
-                    colors = CardDefaults.cardColors(containerColor = Panel),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
                             Text("@" + (o.get("commenterName")?.asString ?: "unknown"), fontWeight = FontWeight.SemiBold)
                             Text(o.get("commentText")?.asString ?: "", color = Color.Gray, maxLines = 2)
@@ -799,6 +795,7 @@ private fun CampaignsScreen(api: ApiClient) {
                                 (analytics?.get("clicks")?.asInt ?: 0) + " clicks",
                             color = Color.Gray, fontSize = 12.sp
                         )
+                        Spacer(Modifier.height(2.dp))
                         a.getAsJsonArray("keywords")?.asList()?.takeIf { it.isNotEmpty() }?.let {
                             Text(it.joinToString(", ") { k -> k.asString }, color = Accent, fontSize = 12.sp)
                         }
@@ -850,7 +847,7 @@ private fun CampaignsScreen(api: ApiClient) {
         })
     }
     if (showImport) {
-        CampaignImportDialog(api, selectedAccountId, onClose = { showImport = false }, onDone = { showImport = false; load() })
+        CampaignImportDialog(api, accountId, onClose = { showImport = false }, onDone = { showImport = false; load() })
     }
 }
 
@@ -1366,7 +1363,11 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
                     FilterChip(selected = previewTab == "DM", onClick = { previewTab = "DM" }, label = { Text("DM") })
                     FilterChip(selected = previewTab == "Comment", onClick = { previewTab = "Comment" }, label = { Text("Comment") })
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    onClick = { detail = a },
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("@" + (accounts?.asList()?.firstOrNull {
                             it.asJsonObject.get("id")?.asString == accountId
