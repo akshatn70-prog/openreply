@@ -13,7 +13,7 @@ type InvitePageProps = {
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getI18n();
   return {
-    title: t("Accept Workspace Invitation - OpenReply"),
+    title: "Accept Workspace Invitation - thehomeodoc",
     robots: { index: false, follow: false },
   };
 }
