@@ -40,7 +40,7 @@ async function getGitHubStars(): Promise<number | null> {
 }
 
 export const metadata: Metadata = {
-  title: "OpenReply - Open source Instagram comment-to-DM automation",
+  title: "TheHomeDoc - Open source Instagram comment-to-DM automation",
   description:
     "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect directly through your own Meta app and the official Meta Instagram API.",
 };
@@ -53,7 +53,7 @@ function ReplyPreview() {
     >
       <div className="or-preview-top">
         <span className="or-wordmark">
-          OpenReply<span aria-hidden="true">↗</span>
+          TheHomeDoc<span aria-hidden="true">↗</span>
         </span>
         <span className="or-mono">Campaign preview</span>
       </div>
@@ -125,7 +125,7 @@ const steps = [
     "Pick a post or reel, add keywords, and write the private reply. Add a public reply or tracked link buttons if you need them.",
   ],
   [
-    "OpenReply handles the rest",
+    "TheHomeDoc handles the rest",
     "Incoming events trigger your campaigns. A background worker queues, rate-limits, and logs each send, with retries and comment reconciliation.",
   ],
 ];
@@ -140,7 +140,7 @@ const features = [
   ],
   [
     "Inbox",
-    "Read conversations and reply from OpenReply, within Instagram’s messaging window.",
+    "Read conversations and reply from TheHomeDoc, within Instagram’s messaging window.",
   ],
   [
     "Delivery logs",
@@ -158,8 +158,8 @@ export default async function Home() {
       <DemoNotice variant="banner" />
       <header className="or-header">
         <div className="or-container or-nav">
-          <a className="or-wordmark" href="#top" aria-label="OpenReply home">
-            OpenReply
+          <a className="or-wordmark" href="#top" aria-label="TheHomeDoc home">
+            TheHomeDoc
           </a>
           <nav aria-label="Main navigation">
             <a href="#how">How it works</a>
@@ -169,7 +169,7 @@ export default async function Home() {
               href={GITHUB_URL}
               target="_blank"
               rel="noreferrer"
-              aria-label="View OpenReply on GitHub"
+              aria-label="View TheHomeDoc on GitHub"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d={githubIconPath} />
@@ -196,12 +196,12 @@ export default async function Home() {
               into private replies.
             </h1>
             <p className="or-lead">
-              Someone comments a keyword on your post or reel, OpenReply sends
+              Someone comments a keyword on your post or reel, TheHomeDoc sends
               them a DM automatically. Free, open source, self-hosted.
             </p>
             <div className="or-actions">
               <a className="or-button or-button-primary" href={SETUP_DOCS_URL}>
-                Set up OpenReply <span aria-hidden="true">↗</span>
+                Set up TheHomeDoc <span aria-hidden="true">↗</span>
               </a>
               <a className="or-text-link" href="#how">
                 See how it works <span aria-hidden="true">↓</span>
@@ -262,7 +262,7 @@ export default async function Home() {
                   <br />A system you can inspect.
                 </h2>
                 <p>
-                  OpenReply owns the campaigns, keyword matching, queues,
+                  TheHomeDoc owns the campaigns, keyword matching, queues,
                   retries, logs, and inbox. Your connection provider handles the
                   Instagram API.
                 </p>
@@ -290,9 +290,9 @@ export default async function Home() {
             </section>
             <section id="setup" className="or-section">
               <div className="or-section-intro">
-                <h2>Self-host OpenReply with Meta.</h2>
+                <h2>Self-host TheHomeDoc with Meta.</h2>
                 <p>
-                  OpenReply uses the official Meta Instagram API directly. You
+                  TheHomeDoc uses the official Meta Instagram API directly. You
                   provide your own Meta app, PostgreSQL, Redis, and background
                   worker.
                 </p>
@@ -332,9 +332,9 @@ export default async function Home() {
               </div>
               <div>
                 <details>
-                  <summary>Is OpenReply free?</summary>
+                  <summary>Is TheHomeDoc free?</summary>
                   <p>
-                    Yes. OpenReply is MIT-licensed software with no software
+                    Yes. TheHomeDoc is MIT-licensed software with no software
                     subscription or seat limits. You pay for your own
                     infrastructure and any optional services you choose,
                     and any infrastructure you choose.
@@ -368,7 +368,7 @@ export default async function Home() {
           <p>Clone it, connect Instagram, and write your first reply.</p>
           <div className="or-actions">
             <a className="or-button or-button-primary" href={SETUP_DOCS_URL}>
-              Set up OpenReply <span aria-hidden="true">↗</span>
+              Set up TheHomeDoc <span aria-hidden="true">↗</span>
             </a>
             <a className="or-text-link" href={GITHUB_URL}>
               Star on GitHub <span aria-hidden="true">↗</span>
@@ -381,7 +381,7 @@ export default async function Home() {
           <div className="or-footer-top">
             <div>
               <Link href="/" className="or-wordmark">
-                OpenReply<span aria-hidden="true">↗</span>
+                TheHomeDoc<span aria-hidden="true">↗</span>
               </Link>
               <p>Open source Instagram comment-to-DM automation.</p>
             </div>
