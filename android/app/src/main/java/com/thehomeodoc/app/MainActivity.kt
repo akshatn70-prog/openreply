@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
 
     private fun logout() {
         lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { api.post("/api/mobile/auth/logout") }
+            try { api.post("/api/mobile/auth/logout") } catch (_: Exception) { }
             store.token = null
             withContext(Dispatchers.Main) { recreate() }
         }
