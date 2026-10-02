@@ -8,7 +8,12 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class ApiClient(private val store: SessionStore) {
-    private val http = OkHttpClient()
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val gson = Gson()
     private val json = "application/json; charset=utf-8".toMediaType()
     private val base = BuildConfig.API_BASE_URL.trimEnd('/')
