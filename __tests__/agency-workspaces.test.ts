@@ -93,8 +93,3 @@ describe("agency workspace helpers", () => {
   });
 });
 
-
-
-
-  await expect(canConnectInstagramAccount({ workspaceId: "workspace_123", instagramId: "ig_123" })).resolves.toMatchObject({ allowed: false });
-});
