@@ -599,6 +599,99 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       }
     }
 
+    const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+    if (!usage.allowed) {
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId,
+          },
+        },
+        data: {
+          status: "SKIPPED_PLAN_LIMIT",
+          matchedKeyword: matchResult.matchedKeyword,
+          errorMessage: `Monthly DM limit reached (${usage.limit})`,
+        },
+      });
+      continue;
+    }
+
+    let rateLimit;
+    try {
+      rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
+    } catch (error) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart
+      );
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId,
+          },
+        },
+        data: {
+          status: "FAILED",
+          errorMessage: formatError(error),
+        },
+      });
+      throw error;
+    }
+
+    if (!rateLimit.allowed) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart
+      );
+
+      if (rateLimit.shouldSkip) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId,
+            },
+          },
+          data: {
+            status: "SKIPPED_RATE_LIMIT",
+            matchedKeyword: matchResult.matchedKeyword,
+            errorMessage: "Hourly Instagram DM rate limit reached",
+          },
+        });
+        continue;
+      }
+
+      if (rateLimit.shouldRequeue) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId,
+            },
+          },
+          data: {
+            status: "PENDING",
+            matchedKeyword: matchResult.matchedKeyword,
+            errorMessage: "Hourly rate limit hit; retry scheduled",
+          },
+        });
+        await getDMQueue().add(
+          "process-comment",
+          {
+            ...job.data,
+            requeueAttempt: requeueAttempt + 1,
+          },
+          {
+            delay: rateLimit.requeueDelayMs,
+            jobId: `comment_${instagramAccountId}_${commentId}_retry_${requeueAttempt + 1}`,
+          }
+        );
+        continue;
+      }
+    }
+
     let claimed;
     try {
       claimed = await claimCommentDelivery(automation.id, commentId, "dm");
