@@ -1214,6 +1214,8 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     }
   }
 
+  const revealCommentId = `reveal:${userId}`;
+
   const usage = await reserveWorkspaceDMSend(automation.workspaceId);
   if (!usage.allowed) {
     await prisma.dmLog.upsert({
