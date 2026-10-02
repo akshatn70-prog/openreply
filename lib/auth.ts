@@ -5,6 +5,8 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 import { isEmailAllowedToSignIn } from "@/lib/env";
+import { headers } from "next/headers";
+import { getMobileUserId } from "@/lib/mobile-auth";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
