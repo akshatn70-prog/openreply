@@ -45,26 +45,6 @@ export const metadata: Metadata = {
     "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect directly through your own Meta app and the official Meta Instagram API.",
 };
 
-function SponsorCredit({ placement }: { placement: string }) {
-  return (
-    <a
-      className="or-sponsor-credit"
-      href={zernioLink({ placement })}
-      target="_blank"
-      rel="sponsored noopener noreferrer"
-    >
-      <span>Supported by</span>
-      <Image
-        src="/brand/zernio-primary.svg"
-        alt="Zernio"
-        width={76}
-        height={24}
-      />
-      <span className="or-sponsor-disclosure">Optional paid provider</span>
-    </a>
-  );
-}
-
 function ReplyPreview() {
   return (
     <figure
@@ -230,7 +210,6 @@ export default async function Home() {
             <p className="or-hero-note">
               Free software. Self-hosted. Your infrastructure.
             </p>
-            <SponsorCredit placement="landing-hero" />
           </div>
           <ReplyPreview />
         </section>
@@ -419,7 +398,6 @@ export default async function Home() {
               MIT licensed · Built by{" "}
               <a href="https://diwenhuang.ca">Diwen Huang</a>
             </span>
-            <SponsorCredit placement="landing-footer" />
           </div>
         </div>
       </footer>
