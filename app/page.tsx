@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import localFont from "next/font/local";
 import { DemoNotice } from "@/components/demo-notice";
-import { zernioLink } from "@/lib/zernio-links";
 
 const geist = localFont({
   src: "../public/fonts/geist-latin.woff2",
@@ -13,7 +12,6 @@ const geist = localFont({
 });
 const GITHUB_URL = "https://github.com/diwenne/openreply";
 const SETUP_DOCS_URL = `${GITHUB_URL}/blob/main/docs/setup.md`;
-const ZERNIO_DOCS_URL = `${GITHUB_URL}/blob/main/docs/zernio.md`;
 
 function formatStars(count: number): string {
   if (count >= 1000) {
@@ -44,7 +42,7 @@ async function getGitHubStars(): Promise<number | null> {
 export const metadata: Metadata = {
   title: "OpenReply - Open source Instagram comment-to-DM automation",
   description:
-    "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect through your own Meta app or optional paid provider Zernio.",
+    "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect directly through your own Meta app and the official Meta Instagram API.",
 };
 
 function SponsorCredit({ placement }: { placement: string }) {
@@ -313,55 +311,27 @@ export default async function Home() {
             </section>
             <section id="setup" className="or-section">
               <div className="or-section-intro">
-                <h2>Self-host OpenReply. Choose your connection.</h2>
+                <h2>Self-host OpenReply with Meta.</h2>
                 <p>
-                  Both options need your own web app, background worker,
-                  PostgreSQL, and Redis. OpenReply is free software; hosting and
-                  provider costs are separate.
+                  OpenReply uses the official Meta Instagram API directly. You
+                  provide your own Meta app, PostgreSQL, Redis, and background
+                  worker.
                 </p>
               </div>
               <div className="or-provider-grid">
-                <article className="or-provider-zernio">
-                  <div className="or-provider-title">
-                    <h3>Connect with Zernio</h3>
-                    <span>Recommended for simpler setup</span>
-                  </div>
-                  <p>
-                    Use Zernio’s managed Instagram connection instead of
-                    creating and reviewing your own Meta app. Save an API key in
-                    Settings, choose a profile, and connect your account.
-                  </p>
-                  <ul>
-                    <li>No Meta app secrets to configure in OpenReply</li>
-                    <li>OpenReply registers the webhook for you</li>
-                    <li>Optional paid service and project sponsor</li>
-                  </ul>
-                  <a
-                    className="or-text-link"
-                    href={zernioLink({ placement: "landing-setup" })}
-                    rel="sponsored noopener noreferrer"
-                    target="_blank"
-                  >
-                    Explore Zernio <span aria-hidden="true">↗</span>
-                  </a>
-                  <a className="or-provider-guide" href={ZERNIO_DOCS_URL}>
-                    Read setup & feature limits
-                  </a>
-                </article>
                 <article>
                   <div className="or-provider-title">
                     <h3>Use your own Meta app</h3>
-                    <span>Direct connection</span>
+                    <span>Direct official API connection</span>
                   </div>
                   <p>
-                    Keep the existing direct Meta integration. Create your app,
-                    configure Instagram Login and webhooks, and manage platform
-                    credentials yourself.
+                    Create your Meta app, configure Instagram Login and
+                    webhooks, and manage the platform credentials yourself.
                   </p>
                   <ul>
                     <li>Bring your own Meta app and secrets</li>
                     <li>Handle App Review where required</li>
-                    <li>No Zernio account or subscription needed</li>
+                    <li>No third-party Instagram provider required</li>
                   </ul>
                   <a
                     className="or-text-link"
@@ -373,9 +343,8 @@ export default async function Home() {
                 </article>
               </div>
               <p className="or-setup-note">
-                Instagram’s account requirements, permissions, messaging
-                windows, and rate limits apply with either provider. Existing
-                accounts are never automatically migrated.
+                Instagram account requirements, permissions, messaging windows,
+                rate limits, and Meta platform policies apply.
               </p>
             </section>
             <section className="or-section or-faq">
@@ -389,7 +358,7 @@ export default async function Home() {
                     Yes. OpenReply is MIT-licensed software with no software
                     subscription or seat limits. You pay for your own
                     infrastructure and any optional services you choose,
-                    including Zernio.
+                    and any infrastructure you choose.
                   </p>
                 </details>
                 <details>
@@ -402,40 +371,11 @@ export default async function Home() {
                   </p>
                 </details>
                 <details>
-                  <summary>Do I need Zernio?</summary>
-                  <p>
-                    No. Zernio is an optional paid connection provider and
-                    sponsor. It can spare you setting up your own Meta app,
-                    while OpenReply still runs on your infrastructure. The
-                    direct Meta path stays available.{" "}
-                    <a
-                      href={zernioLink({ placement: "landing-faq" })}
-                      rel="sponsored noopener noreferrer"
-                      target="_blank"
-                    >
-                      Learn about Zernio
-                    </a>
-                    .
-                  </p>
-                </details>
-                <details>
                   <summary>Which Instagram accounts can I connect?</summary>
                   <p>
                     Instagram Business and Creator accounts. Personal accounts
                     are not supported. Connections use the official API, and
                     Instagram’s platform policies still apply.
-                  </p>
-                </details>
-                <details>
-                  <summary>Are there differences between providers?</summary>
-                  <p>
-                    Yes. With Zernio, the post picker shows the latest 25 posts.
-                    Reporting needs its analytics add-on and synced data, and
-                    follower snapshots can be up to 24 hours old. Inbox previews
-                    are omitted when message direction is unavailable; opening
-                    threads and replying are supported. Read the{" "}
-                    <a href={ZERNIO_DOCS_URL}>provider guide</a> before
-                    choosing.
                   </p>
                 </details>
               </div>
