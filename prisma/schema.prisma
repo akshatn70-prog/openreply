@@ -23,7 +23,8 @@ model User {
   ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
   workspaceMembers  WorkspaceMember[]
   sentInvitations   WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
-  mobileAuthCodes  MobileAuthCode[]\n  mobileSessions   MobileSession[]
+  mobileAuthCodes  MobileAuthCode[]
+  mobileSessions   MobileSession[]
 }
 
 model Account {
