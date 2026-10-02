@@ -24,6 +24,7 @@ import {
   readDMJobs,
   deleteDMJob,
   closeDMQueue,
+  claimDMAction,
   MESSAGE_JOB_NAME,
   POSTBACK_JOB_NAME,
   FOLLOWUP_JOB_NAME,
@@ -961,14 +962,10 @@ async function sendFollowRecheckAck({
   try {
     // One acknowledgement per re-check cycle: a burst of taps collapses into a
     // single re-check (bucketed job id) and should get a single reply too.
-    const first = await getRedisConnection().set(
+    const first = await claimDMAction(
       `follow_recheck_ack:${automationId}:${userId}`,
-      "1",
-      "PX",
-      FOLLOW_RECHECK_TOTAL_MS,
-      "NX"
     );
-    if (first !== "OK") return;
+    if (!first) return;
     if (!operationId) return;
     await sendPostbackOnce({
       // Its own id: the tap's id is claimed later by the link or prompt that

@@ -151,6 +151,20 @@ export async function deleteDMJob(messageId: string): Promise<void> {
   await query("select pgmq.delete('dm_processing',$1::bigint)", [messageId]);
 }
 
+export async function claimDMAction(dedupKey: string): Promise<boolean> {
+  const result = await query<{ claimed: boolean }>(
+    `with inserted as (
+       insert into public.openreply_queue_dedup(dedup_key, queue_name)
+       values ($1, 'dm_processing')
+       on conflict (dedup_key) do nothing
+       returning true
+     )
+     select exists(select 1 from inserted) as claimed`,
+    [dedupKey],
+  );
+  return Boolean(result.rows[0]?.claimed);
+}
+
 export async function cleanupQueueData(): Promise<void> {
   await query("select public.openreply_cleanup_queue_data()");
 }
