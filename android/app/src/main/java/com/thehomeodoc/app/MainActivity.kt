@@ -408,6 +408,7 @@ private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
 
 @Composable
 private fun OverviewScreen(api: ApiClient) {
+    val context = LocalContext.current
     var data by remember { mutableStateOf<JsonObject?>(null) }
     var accountId by remember { mutableStateOf("all") }
     var count by remember { mutableStateOf("50") }
@@ -460,7 +461,7 @@ private fun OverviewScreen(api: ApiClient) {
                         Text("Views, reach, saved and shares need the insights permission.")
                         Text("Reconnect your account to grant it - likes and comments are shown in the meantime.", color = Color.Gray, fontSize = 12.sp)
                         TextButton(onClick = {
-                            CustomTabsIntent.Builder().build().launchUrl(LocalContext.current, Uri.parse(BuildConfig.API_BASE_URL + "/api/instagram/connect"))
+                            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(BuildConfig.API_BASE_URL + "/api/instagram/connect"))
                         }) { Text("Reconnect Instagram") }
                     }
                 }
