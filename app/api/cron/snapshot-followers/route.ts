@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { createInstagramContext } from "@/lib/instagram/context";
-import { getFollowerCountSeries } from "@/lib/instagram/read-analytics";
+import { getUserInfo } from "@/lib/instagram/read-content";
 import { recordFollowerSnapshot, backfillFollowerHistory } from "@/lib/reports/follower-history";
 
 export async function GET(request: Request) {
