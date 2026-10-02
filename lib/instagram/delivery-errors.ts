@@ -40,6 +40,6 @@ export function hasLegacyUnconfirmedDelivery(
 ): boolean {
   return Boolean(
     error &&
-    /(?:MetaApiError (?:1|2|5\\d\\d):|\\[code=(?:1|2|5\\d\\d)\\b)/.test(error),
+    /(?:MetaApiError (?:1|2|5\d\d):|\[code=(?:1|2|5\d\d)\b)/.test(error),
   );
 }
