@@ -101,13 +101,12 @@ export async function backfillFollowerHistory({
 }): Promise<number> {
   let points: { date: string; followers: number }[];
   try {
-      const series = await getFollowerCountSeries({
-        context: accessToken,
-        igUserId: instagramId,
-      });
-      if (!series?.length) return 0;
-      points = reconstructFollowerTotals(series, currentFollowers);
-    }
+    const series = await getFollowerCountSeries({
+      context: accessToken,
+      igUserId: instagramId,
+    });
+    if (!series?.length) return 0;
+    points = reconstructFollowerTotals(series, currentFollowers);
   } catch {
     return 0;
   }
