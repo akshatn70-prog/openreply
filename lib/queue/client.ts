@@ -1,24 +1,24 @@
 /**
- * BullMQ Queue Client
+ * Supabase PGMQ queue client.
  *
- * Provides the DM processing queue and Redis connection for BullMQ.
+ * Replaces BullMQ + Redis for DM processing. The queue itself is stored in
+ * Supabase Postgres via PGMQ. Successful jobs are deleted immediately.
  */
+import { Pool } from "pg";
 
-import { Queue } from "bullmq";
-import Redis from "ioredis";
+let pool: Pool | null = null;
 
-let connection: Redis | null = null;
-
-export function getRedisConnection(): Redis {
-  if (!connection) {
-    connection = new Redis(process.env.REDIS_URL!, {
-      maxRetriesPerRequest: null, // Required by BullMQ
+function getQueuePool(): Pool {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.QUEUE_DB_POOL_MAX ?? 8),
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
     });
   }
-  return connection;
+  return pool;
 }
-
-// ─── DM Queue ───────────────────────────────────────────────────────────────────
 
 export type CommentSource = "WEBHOOK" | "POLLING";
 
@@ -30,16 +30,11 @@ export interface ProcessCommentJob {
   commenterId: string;
   commenterName?: string;
   mediaId: string;
-  // Set when the comment came from an ad: the organic post the ad was made
-  // from. Campaigns are bound to that post, so both ids have to be matched.
   originalMediaId?: string;
   requeueAttempt?: number;
-  // Which path enqueued this comment. It is not copied to ProcessedComment or
-  // used for reconciliation dedup.
   source?: CommentSource;
 }
 
-// Delivered when a user taps an opening DM's button — carries the reveal target.
 export interface ProcessPostbackJob {
   accountConnectionId?: string;
   instagramAccountId: string;
@@ -47,18 +42,10 @@ export interface ProcessPostbackJob {
   payload: string;
   mid?: string;
   fallback?: boolean;
-  // Set on the delayed second pass of a follow-gate check. Instagram does not
-  // report a brand-new follow immediately, so the first `false` is re-checked
-  // later instead of rejecting the tap outright.
   followRecheck?: boolean;
-  // How many delayed re-checks have run, counting this one. Absent on jobs
-  // queued before re-checks were counted, where `followRecheck` meant one.
   followRecheckAttempt?: number;
 }
 
-// Scheduled after the link is delivered, to send the appreciation follow-up.
-// Enqueued with a delay (followUpDelayMinutes) so it can fire later, not just
-// immediately.
 export interface ProcessFollowUpJob {
   accountConnectionId?: string;
   instagramAccountId: string;
@@ -67,8 +54,6 @@ export interface ProcessFollowUpJob {
   commenterName?: string | null;
 }
 
-// An inbound DM from a user. Campaigns with `dmTriggerEnabled` whose keywords
-// match the text reply to the sender.
 export interface ProcessMessageJob {
   accountConnectionId?: string;
   instagramAccountId: string;
@@ -87,27 +72,104 @@ export const POSTBACK_JOB_NAME = "process-postback";
 export const FOLLOWUP_JOB_NAME = "process-followup";
 export const MESSAGE_JOB_NAME = "process-message";
 
-let dmQueue: Queue<DmQueueJob> | null = null;
+export interface DmQueueAddOptions {
+  delay?: number;
+  jobId?: string;
+}
 
-export function getDMQueue(): Queue<DmQueueJob> {
-  if (!dmQueue) {
-    dmQueue = new Queue<DmQueueJob>("dm-processing", {
-      connection: getRedisConnection(),
-      defaultJobOptions: {
-        removeOnComplete: { count: 1000 }, // Keep last 1000 completed jobs
-        // Clear failed jobs shortly after they exhaust retries. Job ids are
-        // deterministic (comment_<acct>_<id>), so a retained failed job would
-        // block the polling reconciler from ever retrying that comment. Clearing
-        // them lets a later sweep re-enqueue and try again once a transient
-        // failure (e.g. an Instagram rate-limit window) has passed. Failure
-        // detail is still preserved in DmLog.
-        removeOnFail: { age: 300, count: 2000 },
-        attempts: 3,
-        backoff: {
-          type: "custom",
-        },
-      },
-    });
+export interface DmQueueJob {
+  id: string;
+  name: string;
+  data: DmQueueJob;
+  attemptsMade: number;
+  messageId: string;
+}
+
+type QueueRow = {
+  msg_id: string | number;
+  read_ct: string | number;
+  message: DmQueueJobPayload;
+};
+
+type DmQueueJobPayload = {
+  name: string;
+  data: DmQueueJob;
+};
+
+export interface DmQueueCounts {
+  waiting: number;
+  delayed: number;
+  active: number;
+  failed: number;
+}
+
+async function query<T = unknown>(text: string, values: unknown[] = []) {
+  return getQueuePool().query<T>(text, values);
+}
+
+export async function enqueueDMJob<T extends DmQueueJob>(
+  name: string,
+  data: T,
+  options: DmQueueAddOptions = {},
+): Promise<string | null> {
+  const delaySeconds = Math.max(0, Math.ceil((options.delay ?? 0) / 1000));
+  const dedupKey = options.jobId ?? null;
+  const result = await query<{ id: string | number | null }>(
+    "select public.openreply_enqueue_dm_job($1::jsonb,$2::integer,$3::text) as id",
+    [JSON.stringify({ name, data }), delaySeconds, dedupKey],
+  );
+  const id = result.rows[0]?.id;
+  return id == null ? null : String(id);
+}
+
+export function getDMQueue() {
+  return {
+    add: enqueueDMJob,
+  };
+}
+
+export async function readDMJobs(
+  quantity = 1,
+  visibilityTimeoutSeconds = 900,
+  pollSeconds = 5,
+): Promise<DmQueueJob[]> {
+  const result = await query<QueueRow>(
+    "select msg_id, read_ct, message from pgmq.read_with_poll('dm_processing',$1::integer,$2::integer,$3::integer,100,'{}'::jsonb)",
+    [visibilityTimeoutSeconds, quantity, pollSeconds],
+  );
+
+  return result.rows.map((row) => ({
+    id: String(row.msg_id),
+    messageId: String(row.msg_id),
+    name: row.message.name,
+    data: row.message.data,
+    attemptsMade: Math.max(0, Number(row.read_ct) - 1),
+  }));
+}
+
+export async function deleteDMJob(messageId: string): Promise<void> {
+  await query("select pgmq.delete('dm_processing',$1::bigint)", [messageId]);
+}
+
+export async function cleanupQueueData(): Promise<void> {
+  await query("select public.openreply_cleanup_queue_data()");
+}
+
+export async function getDMQueueCounts(): Promise<DmQueueCounts> {
+  const result = await query<{
+    queue_length: string | number;
+  }>("select queue_length from pgmq.metrics('dm_processing')");
+  return {
+    waiting: Number(result.rows[0]?.queue_length ?? 0),
+    delayed: 0,
+    active: 0,
+    failed: 0,
+  };
+}
+
+export async function closeDMQueue(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
   }
-  return dmQueue;
 }

@@ -6,10 +6,24 @@ import {
 } from "@/lib/instagram/delivery-errors";
 import { claimCommentDelivery, claimUserRevealDelivery, MAX_COMMENT_SEND_ATTEMPTS } from "./comment-delivery";
 import { createHash } from "node:crypto";
-import { UnrecoverableError, Worker, type Job } from "bullmq";
+export class UnrecoverableError extends Error {
+  readonly unrecoverable = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "UnrecoverableError";
+  }
+}
+type DmWorkerJob = {
+  id: string;
+  name: string;
+  data: DmQueueJob;
+  attemptsMade: number;
+};
 import {
   getDMQueue,
-  getRedisConnection,
+  readDMJobs,
+  deleteDMJob,
+  closeDMQueue,
   MESSAGE_JOB_NAME,
   POSTBACK_JOB_NAME,
   FOLLOWUP_JOB_NAME,
@@ -309,7 +323,7 @@ function connectionScope(data: DmQueueJob) {
   return data.accountConnectionId ? { instagramAccountId: data.accountConnectionId } : {};
 }
 
-async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
+async function processComment(job: DmWorkerJob): Promise<void> {
   const {
     instagramAccountId,
     commentId,
@@ -976,7 +990,7 @@ async function sendFollowRecheckAck({
  * The postback payload is `reveal:<automationId>`; the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
  */
-async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
+async function processPostback(job: DmWorkerJob): Promise<void> {
   const { instagramAccountId, userId, payload, fallback } = job.data;
 
   const isFollowCheck = payload.startsWith("followcheck:");
@@ -1405,7 +1419,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
  * Best-effort: if the message can't be delivered (e.g. the 24-hour messaging
  * window closed because the delay was long), it is logged, not retried forever.
  */
-async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
+async function processFollowUp(job: DmWorkerJob): Promise<void> {
   const { instagramAccountId, userId, automationId, commenterName } = job.data;
 
   const automation = await prisma.automation.findFirst({
@@ -1459,7 +1473,7 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
  * comments) and delivers the reveal directly, honouring the follow gate.
  * Dedup is per inbound message id, so each message triggers at most one reply.
  */
-async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
+async function processMessage(job: DmWorkerJob): Promise<void> {
   const { instagramAccountId, messageId, messageText, senderId } = job.data;
 
   const automations = await prisma.automation.findMany({
@@ -1755,20 +1769,20 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   }
 }
 
-async function dispatchJob(job: Job<DmQueueJob>): Promise<void> {
+async function dispatchJob(job: DmWorkerJob): Promise<void> {
   if (job.name === POSTBACK_JOB_NAME) {
-    return processPostback(job as Job<ProcessPostbackJob>);
+    return processPostback(job as DmWorkerJob);
   }
   if (job.name === FOLLOWUP_JOB_NAME) {
-    return processFollowUp(job as Job<ProcessFollowUpJob>);
+    return processFollowUp(job as DmWorkerJob);
   }
   if (job.name === MESSAGE_JOB_NAME) {
-    return processMessage(job as Job<ProcessMessageJob>);
+    return processMessage(job as DmWorkerJob);
   }
-  return processComment(job as Job<ProcessCommentJob>);
+  return processComment(job as DmWorkerJob);
 }
 
-async function processJob(job: Job<DmQueueJob>): Promise<void> {
+async function processJob(job: DmWorkerJob): Promise<void> {
   try {
     await dispatchJob(job);
   } catch (error) {
@@ -1782,7 +1796,7 @@ async function processJob(job: Job<DmQueueJob>): Promise<void> {
 }
 
 async function recordWorkerFailure(
-  job: Job<DmQueueJob> | undefined,
+  job: DmWorkerJob | undefined,
   error: Error
 ) {
   try {
@@ -1826,46 +1840,83 @@ async function recordWorkerFailure(
   }
 }
 
-export function createDMWorker(): Worker<DmQueueJob> {
-  const worker = new Worker<DmQueueJob>("dm-processing", processJob, {
-    connection: getRedisConnection(),
-    concurrency: 5,
-    settings: {
-      backoffStrategy: (attemptsMade: number) =>
-        BACKOFF_DELAYS[Math.min(attemptsMade - 1, BACKOFF_DELAYS.length - 1)],
+export function createDMWorker(): { close: () => Promise<void> } {
+  const concurrency = Math.max(
+    1,
+    Number(process.env.DM_WORKER_CONCURRENCY ?? 5),
+  );
+  const visibilityTimeoutSeconds = Math.max(
+    300,
+    Number(process.env.DM_QUEUE_VISIBILITY_TIMEOUT_SECONDS ?? 900),
+  );
+  const backoff = BACKOFF_DELAYS;
+  let stopping = false;
+
+  async function loop() {
+    while (!stopping) {
+      try {
+        const jobs = await readDMJobs(1, visibilityTimeoutSeconds, 5);
+        for (const job of jobs) {
+          if (stopping) break;
+          try {
+            await processJob(job);
+            await deleteDMJob(job.id);
+            console.log(`[DM Worker] Job ${job.id} completed`);
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(formatError(error));
+            const attempts = job.attemptsMade + 1;
+            const terminal = err instanceof UnrecoverableError || attempts >= 3;
+
+            if (terminal) {
+              await recordWorkerFailure(job, err);
+              await deleteDMJob(job.id);
+              console.error(
+                `[DM Worker] Job ${job.id} failed permanently (attempt ${attempts}):`,
+                err.message,
+              );
+              continue;
+            }
+
+            try {
+              await getDMQueue().add(
+                job.name,
+                job.data,
+                {
+                  delay: backoff[Math.min(attempts - 1, backoff.length - 1)],
+                  jobId: `${job.id}:retry:${attempts}`,
+                },
+              );
+              await deleteDMJob(job.id);
+              console.error(
+                `[DM Worker] Job ${job.id} requeued (attempt ${attempts}):`,
+                err.message,
+              );
+            } catch (requeueError) {
+              console.error(
+                `[DM Worker] Failed to requeue ${job.id}; leaving it for visibility-timeout retry:`,
+                formatError(requeueError),
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[DM Worker] Queue read failed:", formatError(error));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
+
+  const loops = Array.from({ length: concurrency }, () => loop());
+  void Promise.all(loops).catch((error) => {
+    console.error("[DM Worker] Worker loops stopped:", formatError(error));
+  });
+
+  return {
+    async close() {
+      stopping = true;
+      await Promise.allSettled(loops);
+      await closeDMQueue();
     },
-  });
-
-  worker.on("completed", (job) => {
-    console.log(`[DM Worker] Job ${job.id} completed`);
-  });
-
-  worker.on("failed", (job, err) => {
-    console.error(
-      `[DM Worker] Job ${job?.id} failed (attempt ${job?.attemptsMade}):`,
-      err.message
-    );
-    void recordWorkerFailure(job, err);
-  });
-
-  worker.on("error", (err) => {
-    console.error("[DM Worker] Worker error:", err.message);
-    void prisma.operationalEvent
-      .create({
-        data: {
-          source: "WORKER",
-          level: "ERROR",
-          message: `DM worker process error: ${err.message}`,
-          payload: { name: err.name },
-        },
-      })
-      .catch((recordError) => {
-        console.error(
-          "[DM Worker] Failed to record worker process error:",
-          formatError(recordError)
-        );
-      });
-  });
-
-  return worker;
+  };
 }
+
