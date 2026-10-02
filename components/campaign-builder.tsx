@@ -46,6 +46,8 @@ interface LoadedCampaign {
   requireFollow: boolean;
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
+  followPromptProfileButtonLabel: string | null;
+  followPromptProfileUrl: string | null;
   followUpEnabled: boolean;
   followUpMessage: string | null;
   followUpDelayMinutes: number | null;
@@ -179,6 +181,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [followPromptMessage, setFollowPromptMessage] = useState("");
   const [followPromptButtonLabel, setFollowPromptButtonLabel] =
     useState("i'm following");
+  const [followPromptProfileButtonLabel, setFollowPromptProfileButtonLabel] =
+    useState("Visit Profile");
+  const [followPromptProfileUrl, setFollowPromptProfileUrl] = useState("");
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpDelayMinutes, setFollowUpDelayMinutes] = useState(0);
@@ -286,6 +291,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setFollowPromptMessage(c.followPromptMessage ?? "");
         setFollowPromptButtonLabel(
           c.followPromptButtonLabel ?? "i'm following"
+        );
+        setFollowPromptProfileButtonLabel(
+          c.followPromptProfileButtonLabel ?? "Visit Profile"
+        );
+        setFollowPromptProfileUrl(
+          c.followPromptProfileUrl ??
+            `https://www.instagram.com/${c.instagramAccountId ? (accounts.find((a) => a.id === c.instagramAccountId)?.username ?? username) : username}/`
         );
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
@@ -425,6 +437,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       followPromptMessage: requireFollow ? followPromptMessage.trim() : "",
       followPromptButtonLabel: requireFollow
         ? followPromptButtonLabel.trim() || "i'm following"
+        : "",
+      followPromptProfileButtonLabel: requireFollow
+        ? followPromptProfileButtonLabel.trim() || "Visit Profile"
+        : "",
+      followPromptProfileUrl: requireFollow
+        ? followPromptProfileUrl.trim()
         : "",
       followUpEnabled,
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
@@ -847,15 +865,41 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted">{t("Visit Profile button")}</label>
+                    <input
+                      value={followPromptProfileButtonLabel}
+                      onChange={(e) => setFollowPromptProfileButtonLabel(e.target.value)}
+                      placeholder={t("Visit Profile")}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                      maxLength={20}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted">{t("I'm Following button")}</label>
+                    <input
+                      value={followPromptButtonLabel}
+                      onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
+                      placeholder={t("I'm Following")}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                      maxLength={20}
+                    />
+                  </div>
+                </div>
                 <input
-                  value={followPromptButtonLabel}
-                  onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                  placeholder={t("i'm following")}
+                  value={followPromptProfileUrl}
+                  onChange={(e) => setFollowPromptProfileUrl(e.target.value)}
+                  placeholder={`https://www.instagram.com/${username}/`}
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={20}
+                  maxLength={2048}
+                  type="url"
                 />
                 <p className="text-xs text-muted">
-                  {t("We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we send it anyway.")}
+                  {t("Visit Profile opens this URL. It defaults to the connected Instagram profile.")}
+                </p>
+                <p className="text-xs text-muted">
+                  {t("The follow check retries when Instagram cannot verify. If it still cannot be verified, the campaign DM is sent once. If they are not following, the follow message is sent again.")}
                 </p>
               </div>
             )}
@@ -1007,6 +1051,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             requireFollow={requireFollow}
             followPromptMessage={followPromptMessage}
             followPromptButtonLabel={followPromptButtonLabel || "i'm following"}
+            followPromptProfileButtonLabel={followPromptProfileButtonLabel || "Visit Profile"}
+            followPromptProfileUrl={followPromptProfileUrl || `https://www.instagram.com/${username}/`}
             followUpEnabled={followUpEnabled}
             followUpMessage={followUpMessage}
             followUpDelayMinutes={followUpDelayMinutes}
