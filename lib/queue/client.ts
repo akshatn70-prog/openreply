@@ -77,7 +77,7 @@ export interface DmQueueAddOptions {
   jobId?: string;
 }
 
-export interface DmQueueJob {
+export interface DmQueueMessage {
   id: string;
   name: string;
   data: DmQueueJob;
@@ -132,7 +132,7 @@ export async function readDMJobs(
   quantity = 1,
   visibilityTimeoutSeconds = 900,
   pollSeconds = 5,
-): Promise<DmQueueJob[]> {
+): Promise<DmQueueMessage[]> {
   const result = await query<QueueRow>(
     "select msg_id, read_ct, message from pgmq.read_with_poll('dm_processing',$1::integer,$2::integer,$3::integer,100,'{}'::jsonb)",
     [visibilityTimeoutSeconds, quantity, pollSeconds],
