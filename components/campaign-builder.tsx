@@ -872,7 +872,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                     <input
                       value={followPromptProfileButtonLabel}
                       onChange={(e) => setFollowPromptProfileButtonLabel(e.target.value)}
-                      placeholder=Visit Profile
+                      placeholder="Visit Profile"
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                       maxLength={20}
                     />
@@ -882,7 +882,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                     <input
                       value={followPromptButtonLabel}
                       onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                      placeholder=I'm Following
+                      placeholder="I'm Following"
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                       maxLength={20}
                     />
