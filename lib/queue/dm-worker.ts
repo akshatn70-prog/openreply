@@ -760,7 +760,6 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commentId,
           text: renderFollowPrompt(automation, commenterName ?? null),
           buttons: buildFollowPromptButtons(automation),
-          postId: mediaId,
         });
       } else if (automation.trackedLinks.length > 0) {
         // Try button template first; if Meta rejects it, fall back to inline links.
