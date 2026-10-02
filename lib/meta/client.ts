@@ -174,6 +174,27 @@ export async function sendPrivateReply(
  * a `messaging_postbacks` webhook carrying `payload`, which we use to deliver
  * the follow-up ("reveal") message.
  */
+export type MessageButton =
+  | { type: "web_url"; title: string; url: string }
+  | { type: "postback"; title: string; payload: string };
+
+function toMessageButtons(buttons: MessageButton[]) {
+  return buttons.slice(0, 3).map((button) => {
+    if (button.type === "web_url") {
+      return {
+        type: "web_url" as const,
+        url: button.url,
+        title: button.title.slice(0, 20),
+      };
+    }
+    return {
+      type: "postback" as const,
+      title: button.title.slice(0, 20),
+      payload: button.payload,
+    };
+  });
+}
+
 export async function sendPrivateReplyWithButton(
   accessToken: string,
   instagramAccountId: string,
@@ -181,6 +202,22 @@ export async function sendPrivateReplyWithButton(
   text: string,
   buttonTitle: string,
   payload: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  return sendPrivateReplyWithButtons(
+    accessToken,
+    instagramAccountId,
+    commentId,
+    text,
+    [{ type: "postback", title: buttonTitle, payload }]
+  );
+}
+
+export async function sendPrivateReplyWithButtons(
+  accessToken: string,
+  instagramAccountId: string,
+  commentId: string,
+  text: string,
+  buttons: MessageButton[]
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${instagramAccountId}/messages`,
@@ -197,11 +234,8 @@ export async function sendPrivateReplyWithButton(
             type: "template",
             payload: {
               template_type: "button",
-              // Button template text is capped at 640 chars by Meta.
               text: text.slice(0, 640),
-              buttons: [
-                { type: "postback", title: buttonTitle.slice(0, 20), payload },
-              ],
+              buttons: toMessageButtons(buttons),
             },
           },
         },
@@ -225,6 +259,22 @@ export async function sendDirectMessageWithButton(
   buttonTitle: string,
   payload: string
 ): Promise<{ recipient_id: string; message_id: string }> {
+  return sendDirectMessageWithButtons(
+    accessToken,
+    instagramAccountId,
+    userId,
+    text,
+    [{ type: "postback", title: buttonTitle, payload }]
+  );
+}
+
+export async function sendDirectMessageWithButtons(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  text: string,
+  buttons: MessageButton[]
+): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${instagramAccountId}/messages`,
     {
@@ -241,9 +291,7 @@ export async function sendDirectMessageWithButton(
             payload: {
               template_type: "button",
               text: text.slice(0, 640),
-              buttons: [
-                { type: "postback", title: buttonTitle.slice(0, 20), payload },
-              ],
+              buttons: toMessageButtons(buttons),
             },
           },
         },
