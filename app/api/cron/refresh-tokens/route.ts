@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
   const accountsToRefresh = await prisma.instagramAccount.findMany({
     where: {
       accessToken: { not: "" },
-      provider: "META",
       tokenExpiresAt: {
         not: null,
         lte: cutoffDate,
@@ -107,3 +106,4 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
