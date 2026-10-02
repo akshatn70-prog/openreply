@@ -42,8 +42,10 @@ const {
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
   mockSendPrivateReplyWithButton: vi.fn(),
+  mockSendPrivateReplyWithButtons: vi.fn(),
   mockGetUserFollowStatus: vi.fn(),
   mockSendDirectMessageWithButton: vi.fn(),
+  mockSendDirectMessageWithButtons: vi.fn(),
   mockSendDirectMessage: vi.fn(),
   mockSendDirectMessageWithLinkButton: vi.fn(),
   mockDecryptToken: vi.fn(),
@@ -63,8 +65,10 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: mockSendPrivateReplyWithButton,
+  sendPrivateReplyWithButtons: mockSendPrivateReplyWithButtons,
   getUserFollowStatus: mockGetUserFollowStatus,
   sendDirectMessageWithButton: mockSendDirectMessageWithButton,
+  sendDirectMessageWithButtons: mockSendDirectMessageWithButtons,
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
   sendCommentReply: vi.fn(),
@@ -161,6 +165,11 @@ const mockAutomation = {
   publicReplyEnabled: false,
   publicReplyMessage: null,
   publicReplyMessages: [],
+  requireFollow: false,
+  followPromptMessage: null,
+  followPromptButtonLabel: null,
+  followPromptProfileButtonLabel: "Visit Profile",
+  followPromptProfileUrl: "https://www.instagram.com/example/",
   instagramAccount: {
     id: "ig_account_row_1",
     instagramId: "ig_456",
@@ -620,13 +629,23 @@ describe("DM Worker — Full Pipeline", () => {
 
     // The follow prompt goes out with a `followcheck:` postback button; the
     // link is NOT delivered yet.
-    expect(mockSendPrivateReplyWithButton).toHaveBeenCalledWith(
+    expect(mockSendPrivateReplyWithButtons).toHaveBeenCalledWith(
       "decrypted_token",
       "ig_456",
       "comment_555",
       "Follow me first commenter_user, then tap 👇",
-      "I'm following ✅",
-      "followcheck:auto_789"
+      [
+        {
+          type: "web_url",
+          title: "Visit Profile",
+          url: "https://www.instagram.com/example/",
+        },
+        {
+          type: "postback",
+          title: "I'm following ✅",
+          payload: "followcheck:auto_789",
+        },
+      ]
     );
     expect(mockSendPrivateReplyWithLinkButton).not.toHaveBeenCalled();
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
@@ -1107,13 +1126,23 @@ describe("DM Worker — DM keyword trigger", () => {
     const processor = getProcessor();
     await processor(createMockMessageJob());
 
-    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+    expect(mockSendDirectMessageWithButtons).toHaveBeenCalledWith(
       "decrypted_token",
       "ig_456",
       "commenter_999",
       expect.any(String),
-      "I'm following ✅",
-      "followcheck:auto_789"
+      [
+        {
+          type: "web_url",
+          title: "Visit Profile",
+          url: "https://www.instagram.com/example/",
+        },
+        {
+          type: "postback",
+          title: "I'm following",
+          payload: "followcheck:auto_789",
+        },
+      ]
     );
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
   });
@@ -1131,6 +1160,36 @@ describe("DM Worker — DM keyword trigger", () => {
 
     expect(mockSendDirectMessageWithButton).toHaveBeenCalled();
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends the final campaign DM only once for a user across repeated comments", async () => {
+    let revealDelivered = false;
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...dmTriggerAutomation,
+        requireFollow: true,
+        trackedLinks: [],
+      },
+    ]);
+    mockPrisma.dmLog.findUnique.mockImplementation(
+      async (args: { where?: { automationId_commentId?: { commentId?: string } } } = {}) => {
+        const commentId = args.where?.automationId_commentId?.commentId;
+        if (commentId === "reveal:commenter_999" && revealDelivered) {
+          return { status: "SENT", dmDeliveryUnconfirmed: false };
+        }
+        return null;
+      }
+    );
+    mockGetUserFollowStatus.mockResolvedValue(true);
+    mockSendPrivateReply.mockImplementation(() => {
+      revealDelivered = true;
+    });
+
+    const processor = getProcessor();
+    await processor(createMockJob({ ...mockJobData, commentId: "comment_1" }));
+    await processor(createMockJob({ ...mockJobData, commentId: "comment_2" }));
+
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
   });
 
   it("should skip and log when the workspace is over its monthly limit", async () => {
