@@ -764,7 +764,11 @@ private fun CampaignsScreen(api: ApiClient) {
                 val id = a.get("id")?.asString ?: return@items
                 val active = a.get("isActive")?.asBoolean == true
                 val analytics = a.getAsJsonObject("analytics")
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    onClick = { detail = a },
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -1364,7 +1368,6 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
                     FilterChip(selected = previewTab == "Comment", onClick = { previewTab = "Comment" }, label = { Text("Comment") })
                 }
                 Card(
-                    onClick = { detail = a },
                     colors = CardDefaults.cardColors(containerColor = Panel),
                     modifier = Modifier.fillMaxWidth()
                 ) {
