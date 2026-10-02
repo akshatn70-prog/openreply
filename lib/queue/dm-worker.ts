@@ -714,7 +714,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           workspaceId: automation.workspaceId,
           instagramAccountId: automation.instagramAccountId,
           userId: commenterId,
-          commenterName,
+          commenterName: commenterName ?? null,
         });
         if (!revealClaimed) {
           await prisma.dmLog.update({
