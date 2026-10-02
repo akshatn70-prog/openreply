@@ -46,7 +46,6 @@ import androidx.work.WorkManager
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -116,6 +115,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TheHomeDocApp(store: SessionStore, api: ApiClient, onLogout: () -> Unit) {
+    val appScope = rememberCoroutineScope()
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = Dark, surface = Panel, primary = Accent,
@@ -128,6 +128,7 @@ private fun TheHomeDocApp(store: SessionStore, api: ApiClient, onLogout: () -> U
 
 @Composable
 private fun LoginScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf(false) }
@@ -181,7 +182,7 @@ private fun LoginScreen(api: ApiClient) {
                     onClick = {
                         sending = true
                         error = null
-                        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                        appScope.launch(Dispatchers.IO) {
                             try {
                                 val body = JsonObject().apply {
                                     addProperty("email", email.trim())
@@ -230,6 +231,7 @@ private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics
 
 @Composable
 private fun MainShell(api: ApiClient, onLogout: () -> Unit) {
+    val appScope = rememberCoroutineScope()
     var selected by remember { mutableStateOf(Tab.DASHBOARD) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -292,6 +294,7 @@ private fun MainShell(api: ApiClient, onLogout: () -> Unit) {
 
 @Composable
 private fun Screen(title: String, refresh: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val appScope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -304,12 +307,13 @@ private fun Screen(title: String, refresh: (() -> Unit)? = null, content: @Compo
 
 @Composable
 private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
+    val appScope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JsonObject?>(null) }
     var accountId by remember { mutableStateOf("all") }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val path = "/api/dashboard/stats" + if (accountId != "all") "?instagramAccountId=" + accountId else ""
                 val d = api.get(path).getAsJsonObject("data")
@@ -404,6 +408,7 @@ private fun DashboardScreen(api: ApiClient, onSeeActivity: () -> Unit) {
 
 @Composable
 private fun OverviewScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     val context = LocalContext.current
     var data by remember { mutableStateOf<JsonObject?>(null) }
     var accountId by remember { mutableStateOf("all") }
@@ -411,7 +416,7 @@ private fun OverviewScreen(api: ApiClient) {
     var error by remember { mutableStateOf<String?>(null) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val query = "/api/instagram/overview?count=" + count + if (accountId != "all") "&instagramAccountId=" + accountId else ""
                 val d = api.get(query).getAsJsonObject("data")
@@ -535,6 +540,7 @@ private fun OverviewScreen(api: ApiClient) {
 
 @Composable
 private fun LogsScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     val statuses = listOf("ALL", "SENT", "FAILED", "PENDING", "SKIPPED_RATE_LIMIT", "SKIPPED_PLAN_LIMIT", "SKIPPED_DEDUP")
     var status by remember { mutableStateOf("ALL") }
     var accountId by remember { mutableStateOf("all") }
@@ -545,7 +551,7 @@ private fun LogsScreen(api: ApiClient) {
     var error by remember { mutableStateOf<String?>(null) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val query = buildString {
                     append("/api/logs?page=")
@@ -625,11 +631,12 @@ private fun LogsScreen(api: ApiClient) {
 
 @Composable
 private fun DiagnosticsScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JsonObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/admin/diagnostics").getAsJsonObject("data")
                 withContext(Dispatchers.Main) { data = d; error = null }
@@ -670,6 +677,7 @@ private fun DiagnosticsScreen(api: ApiClient) {
 
 @Composable
 private fun StatusCard(title: String, value: String) {
+    val appScope = rememberCoroutineScope()
     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text(title, color = Color.Gray, fontSize = 12.sp)
@@ -680,6 +688,7 @@ private fun StatusCard(title: String, value: String) {
 
 @Composable
 private fun DiagnosticSection(title: String, array: JsonArray?, field: String) {
+    val appScope = rememberCoroutineScope()
     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
@@ -700,6 +709,7 @@ private fun DiagnosticSection(title: String, array: JsonArray?, field: String) {
 
 @Composable
 private fun CampaignsScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     val context = LocalContext.current
     var campaigns by remember { mutableStateOf<JsonArray?>(null) }
     var showCreate by remember { mutableStateOf(false) }
@@ -711,7 +721,7 @@ private fun CampaignsScreen(api: ApiClient) {
     var showImport by remember { mutableStateOf(false) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/automations").getAsJsonArray("data")
                 withContext(Dispatchers.Main) { campaigns = d; message = null }
@@ -782,7 +792,7 @@ private fun CampaignsScreen(api: ApiClient) {
                             Switch(
                                 checked = active,
                                 onCheckedChange = { checked ->
-                                    GlobalScope.launch(Dispatchers.IO) {
+                                    appScope.launch(Dispatchers.IO) {
                                         val body = JsonObject().apply { addProperty("isActive", checked) }
                                         runCatching { api.patch("/api/automations?id=" + id, body) }
                                         withContext(Dispatchers.Main) { load() }
@@ -812,7 +822,7 @@ private fun CampaignsScreen(api: ApiClient) {
                             }
                             TextButton(onClick = { editing = a }) { Text("Edit") }
                             TextButton(onClick = {
-                                GlobalScope.launch(Dispatchers.IO) {
+                                appScope.launch(Dispatchers.IO) {
                                     try {
                                         api.post("/api/automations/duplicate?id=" + id)
                                         withContext(Dispatchers.Main) { load() }
@@ -822,7 +832,7 @@ private fun CampaignsScreen(api: ApiClient) {
                                 }
                             }) { Text("Duplicate") }
                             TextButton(onClick = {
-                                GlobalScope.launch(Dispatchers.IO) {
+                                appScope.launch(Dispatchers.IO) {
                                     try {
                                         api.delete("/api/automations?id=" + id)
                                         withContext(Dispatchers.Main) { load() }
@@ -862,6 +872,7 @@ private fun CampaignDetailDialog(
     onClose: () -> Unit,
     onEdit: () -> Unit
 ) {
+    val appScope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("Insights") }
     var busy by remember { mutableStateOf(false) }
     var current by remember { mutableStateOf(campaign) }
@@ -869,7 +880,7 @@ private fun CampaignDetailDialog(
     fun toggle() {
         val id = current.get("id")?.asString ?: return
         busy = true
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             val body = JsonObject().apply { addProperty("isActive", !(current.get("isActive")?.asBoolean == true)) }
             runCatching { api.patch("/api/automations?id=" + id, body) }
             withContext(Dispatchers.Main) {
@@ -939,6 +950,7 @@ private fun CampaignImportDialog(
     onClose: () -> Unit,
     onDone: () -> Unit
 ) {
+    val appScope = rememberCoroutineScope()
     var csv by remember { mutableStateOf("") }
     var preview by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1005,7 +1017,7 @@ private fun CampaignImportDialog(
                 if (preview.isNotEmpty()) {
                     Button(enabled = !importing, onClick = {
                         importing = true
-                        GlobalScope.launch(Dispatchers.IO) {
+                        appScope.launch(Dispatchers.IO) {
                             try {
                                 preview.forEach { row ->
                                     val body = JsonObject().apply {
@@ -1039,6 +1051,7 @@ private fun CampaignImportDialog(
 
 @Composable
 private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: JsonObject? = null) {
+    val appScope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var accounts by remember { mutableStateOf<JsonArray?>(null) }
     var accountId by remember { mutableStateOf("") }
@@ -1112,7 +1125,7 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
     }
 
     fun loadAccounts() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val data = api.get("/api/dashboard/stats").getAsJsonObject("data")
                 val list = data.getAsJsonArray("instagramAccounts") ?: JsonArray()
@@ -1130,7 +1143,7 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
 
     fun loadPosts(id: String) {
         if (id.isBlank()) return
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val data = api.get("/api/instagram/posts?instagramAccountId=$id&all=true")
                 val list = data.getAsJsonArray("data") ?: JsonArray()
@@ -1207,7 +1220,7 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
         }
 
         saving = true
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val body = JsonObject().apply {
                     addProperty("name", name.trim().ifBlank { "Instagram campaign" })
@@ -1430,11 +1443,13 @@ private fun CreateCampaignDialog(api: ApiClient, onDone: () -> Unit, existing: J
 
 @Composable
 private fun SectionTitle(text: String) {
+    val appScope = rememberCoroutineScope()
     Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
 }
 
 @Composable
 private fun RadioOption(selected: Boolean, label: String, onClick: () -> Unit) {
+    val appScope = rememberCoroutineScope()
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = if (selected) Accent.copy(alpha = 0.15f) else Panel),
@@ -1449,6 +1464,7 @@ private fun RadioOption(selected: Boolean, label: String, onClick: () -> Unit) {
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    val appScope = rememberCoroutineScope()
     Row(
         Modifier.fillMaxWidth().padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1460,6 +1476,7 @@ private fun ToggleRow(label: String, checked: Boolean, onToggle: (Boolean) -> Un
 
 @Composable
 private fun MultiField(value: String, label: String, singleLine: Boolean, onChange: (String) -> Unit) {
+    val appScope = rememberCoroutineScope()
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -1475,6 +1492,7 @@ private fun MultiField(value: String, label: String, singleLine: Boolean, onChan
 
 @Composable
 private fun InboxScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     var accounts by remember { mutableStateOf<JsonArray?>(null) }
     var accountId by remember { mutableStateOf("") }
     var conversations by remember { mutableStateOf<JsonArray?>(null) }
@@ -1485,7 +1503,7 @@ private fun InboxScreen(api: ApiClient) {
     var sending by remember { mutableStateOf(false) }
 
     fun loadAccounts() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/instagram/accounts").getAsJsonObject("data")
                 withContext(Dispatchers.Main) {
@@ -1500,7 +1518,7 @@ private fun InboxScreen(api: ApiClient) {
 
     fun loadConversations() {
         if (accountId.isBlank()) return
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/instagram/conversations?instagramAccountId=" + accountId).getAsJsonObject("data")
                 withContext(Dispatchers.Main) { conversations = d.getAsJsonArray("conversations"); error = null }
@@ -1512,7 +1530,7 @@ private fun InboxScreen(api: ApiClient) {
 
     fun loadMessages(conversationId: String) {
         if (accountId.isBlank()) return
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val d = api.get("/api/instagram/conversations/" + conversationId + "?instagramAccountId=" + accountId).getAsJsonObject("data")
                 val list = JsonArray()
@@ -1530,7 +1548,7 @@ private fun InboxScreen(api: ApiClient) {
         val text = draft.trim()
         if (recipient.isBlank() || text.isBlank() || sending) return
         sending = true
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val body = JsonObject().apply {
                     addProperty("instagramAccountId", accountId)
@@ -1647,11 +1665,12 @@ private fun InboxScreen(api: ApiClient) {
 
 @Composable
 private fun AnalyticsScreen(api: ApiClient) {
+    val appScope = rememberCoroutineScope()
     var data by remember { mutableStateOf<JsonObject?>(null) }
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             runCatching { api.get("/api/instagram/overview?count=30").getAsJsonObject("data") }.onSuccess {
-                GlobalScope.launch(Dispatchers.Main) { data = it }
+                appScope.launch(Dispatchers.Main) { data = it }
             }
         }
     }
@@ -1691,6 +1710,7 @@ private fun AnalyticsScreen(api: ApiClient) {
 
 @Composable
 private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
+    val appScope = rememberCoroutineScope()
     val context = LocalContext.current
     var accounts by remember { mutableStateOf<JsonArray?>(null) }
     var members by remember { mutableStateOf<JsonObject?>(null) }
@@ -1701,7 +1721,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
 
     fun load() {
-        GlobalScope.launch(Dispatchers.IO) {
+        appScope.launch(Dispatchers.IO) {
             try {
                 val stats = api.get("/api/dashboard/stats").getAsJsonObject("data")
                 val accountData = api.get("/api/instagram/accounts").getAsJsonObject("data")
@@ -1764,7 +1784,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
                             }
                             TextButton(enabled = !busy, onClick = {
                                 busy = true
-                                GlobalScope.launch(Dispatchers.IO) {
+                                appScope.launch(Dispatchers.IO) {
                                     val body = JsonObject().apply { addProperty("instagramAccountId", a.get("id").asString) }
                                     runCatching { api.post("/api/instagram/disconnect", body) }
                                     withContext(Dispatchers.Main) { busy = false; load() }
@@ -1817,7 +1837,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
                                     clip?.setPrimaryClip(ClipData.newPlainText("Invite URL", inv.get("inviteUrl")?.asString ?: ""))
                                 }) { Text("Copy") }
                                 TextButton(onClick = {
-                                    GlobalScope.launch(Dispatchers.IO) {
+                                    appScope.launch(Dispatchers.IO) {
                                         val b = JsonObject().apply { addProperty("invitationId", inv.get("id").asString) }
                                         runCatching { api.delete("/api/workspace/members", b) }
                                         withContext(Dispatchers.Main) { load() }
@@ -1839,7 +1859,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
                             enabled = !busy && inviteEmail.contains("@"),
                             onClick = {
                                 busy = true
-                                GlobalScope.launch(Dispatchers.IO) {
+                                appScope.launch(Dispatchers.IO) {
                                     val b = JsonObject().apply {
                                         addProperty("email", inviteEmail.trim())
                                         addProperty("role", inviteRole)
@@ -1889,6 +1909,7 @@ private fun SettingsScreen(api: ApiClient, onLogout: () -> Unit) {
 
 @Composable
 private fun SettingsPanel(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val appScope = rememberCoroutineScope()
     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -1899,6 +1920,7 @@ private fun SettingsPanel(title: String, content: @Composable ColumnScope.() -> 
 
 @Composable
 private fun StatCard(title: String, value: Int, modifier: Modifier = Modifier) {
+    val appScope = rememberCoroutineScope()
     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = modifier) {
         Column(Modifier.padding(16.dp)) {
             Text(title, color = Color.Gray, fontSize = 12.sp)
@@ -1909,11 +1931,14 @@ private fun StatCard(title: String, value: Int, modifier: Modifier = Modifier) {
 
 @Composable
 private fun Field(value: String, label: String, onChange: (String) -> Unit) {
+    val appScope = rememberCoroutineScope()
     OutlinedTextField(value, onChange, modifier = Modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true)
 }
 
 @Composable
-private fun Loading() { Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+private fun Loading() {
+    val appScope = rememberCoroutineScope() Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
 @Composable
-private fun ErrorText(text: String) { Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+private fun ErrorText(text: String) {
+    val appScope = rememberCoroutineScope() Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
 private fun JsonObject.int(name: String): Int = get(name)?.asInt ?: 0
