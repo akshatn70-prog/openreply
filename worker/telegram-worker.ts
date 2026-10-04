@@ -21,11 +21,12 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const delayedTimers = new Set<ReturnType<typeof setTimeout>>();
+
 function configured(): boolean {
   return Boolean(
     process.env.TELEGRAM_QUEUE_BOT_TOKEN?.trim() &&
-      process.env.TELEGRAM_WORKER_BOT_TOKEN?.trim() &&
-      process.env.TELEGRAM_QUEUE_CHAT_ID?.trim(),
+      process.env.TELEGRAM_WORKER_BOT_TOKEN?.trim(),
   );
 }
 
@@ -35,12 +36,8 @@ function workerToken(): string {
   return token;
 }
 
-function commandChatId(): string {
-  const value =
-    process.env.TELEGRAM_COMMAND_CHAT_ID?.trim() ||
-    process.env.TELEGRAM_QUEUE_CHAT_ID?.trim();
-  if (!value) throw new Error("Missing TELEGRAM_QUEUE_CHAT_ID");
-  return value;
+function commandChatId(): string | null {
+  return process.env.TELEGRAM_COMMAND_CHAT_ID?.trim() || null;
 }
 
 async function telegramApi<T>(
@@ -94,7 +91,12 @@ async function handleCommand(update: TelegramUpdate): Promise<boolean> {
   const text = message?.text?.trim();
   if (message?.chat?.id == null || !text?.startsWith("/")) return false;
 
-  if (String(message.chat.id) !== commandChatId()) return true;
+  const allowedCommandChatId = commandChatId();
+  // Commands are optional and isolated from the queue transport. If no
+  // command allow-list is configured, arbitrary messages are never commands.
+  if (!allowedCommandChatId || String(message.chat.id) !== allowedCommandChatId) {
+    return true;
+  }
 
   const command = text.split(/\s+/)[0].split("@")[0].toLowerCase();
 
@@ -144,7 +146,7 @@ async function handleCommand(update: TelegramUpdate): Promise<boolean> {
         [
           "OpenReply Queue",
           `Supabase PGMQ waiting: ${counts.waiting}`,
-          "Telegram jobs are delivered through the configured Telegram queue chat and consumed by long polling.",
+          "Telegram jobs are delivered directly to this worker bot's private chat and consumed by long polling.",
         ].join("\n"),
       );
       return true;
@@ -174,8 +176,8 @@ async function handleCommand(update: TelegramUpdate): Promise<boolean> {
         [
           "Telegram Processing Transport",
           `Configured: ${configured() ? "YES" : "NO"}`,
-          `Queue chat ID: ${process.env.TELEGRAM_QUEUE_CHAT_ID?.trim() ?? "missing"}`,
-          `Command chat ID: ${process.env.TELEGRAM_COMMAND_CHAT_ID?.trim() ?? process.env.TELEGRAM_QUEUE_CHAT_ID?.trim() ?? "missing"}`,
+          "Queue target: this worker bot's private chat (discovered automatically)",
+          `Command chat allow-list: ${process.env.TELEGRAM_COMMAND_CHAT_ID?.trim() ?? "not configured"}`,
           "Worker receives jobs with getUpdates long polling.",
           "Supabase campaigns continue using the existing PGMQ path.",
         ].join("\n"),
@@ -203,7 +205,19 @@ async function handleEnvelope(envelope: TelegramQueueEnvelope): Promise<void> {
   };
 
   if (envelope.notBefore && envelope.notBefore > Date.now()) {
-    await sleep(envelope.notBefore - Date.now());
+    // Never block the Telegram update loop on delayed retries/re-checks.
+    const delay = envelope.notBefore - Date.now();
+    const timer = setTimeout(() => {
+      delayedTimers.delete(timer);
+      void handleEnvelope({ ...envelope, notBefore: undefined }).catch((error) => {
+        console.error(
+          "[Telegram Worker] Delayed job failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    }, delay);
+    delayedTimers.add(timer);
+    return;
   }
 
   try {
@@ -271,9 +285,9 @@ export function startTelegramWorker(): { close: () => void } {
             continue;
           }
 
-          // Do not advance offset until the job has either completed or has
-          // been durably re-sent with its retry delay. Telegram keeps pending
-          // updates for up to 24 hours.
+          // Delayed work is scheduled locally; the Telegram update can now be
+          // acknowledged without blocking later jobs. Telegram retains
+          // unconfirmed updates for up to 24 hours.
           await handleEnvelope(envelope);
           offset = update.update_id + 1;
         }
@@ -291,6 +305,8 @@ export function startTelegramWorker(): { close: () => void } {
   return {
     close() {
       stopping = true;
+      for (const timer of delayedTimers) clearTimeout(timer);
+      delayedTimers.clear();
       void loop;
     },
   };
