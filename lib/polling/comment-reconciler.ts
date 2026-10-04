@@ -129,6 +129,7 @@ async function sweepCampaign({
     keywords: string[];
     wholeWordMatch: boolean;
     publicReplyEnabled: boolean;
+    processingTransport: "SUPABASE" | "TELEGRAM";
     instagramAccount: {
       id: string;
       instagramId: string;
