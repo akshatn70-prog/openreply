@@ -4,8 +4,10 @@ import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { cleanupQueueData } from "@/lib/queue/client";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
 import os from "node:os";
+import { startTelegramWorker } from "./telegram-worker";
 
 const worker = createDMWorker();
+const telegramWorker = startTelegramWorker();
 const startedAt = new Date().toISOString();
 const HEARTBEAT_INTERVAL_MS = 60_000;
 // Polling safety net for comments that webhooks miss. Runs in the worker because
@@ -63,6 +65,7 @@ async function shutdown(signal: string) {
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
   clearInterval(cleanupTimer);
+  telegramWorker.close();
   await worker.close();
   process.exit(0);
 }
