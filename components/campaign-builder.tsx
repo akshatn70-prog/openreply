@@ -27,6 +27,7 @@ import {
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
+type ProcessingTransport = "SUPABASE" | "TELEGRAM";
 
 interface LoadedCampaign {
   id: string;
@@ -55,6 +56,7 @@ interface LoadedCampaign {
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
+  processingTransport: ProcessingTransport;
   instagramAccountId: string;
   instagramAccount?: { username: string };
   trackedLinks?: { destinationUrl: string; label?: string | null }[];
@@ -148,6 +150,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
+  const [processingTransport, setProcessingTransport] = useState<ProcessingTransport>("SUPABASE");
 
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
@@ -281,6 +284,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
+        setProcessingTransport(c.processingTransport ?? "SUPABASE");
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
         setTrackedDestinationUrl(link);
         setLinkOpen(Boolean(link));
@@ -449,6 +453,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
       followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
       isActive: activeValue,
+      processingTransport,
     };
 
     try {
@@ -686,6 +691,26 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </div>
           )}
         </div>
+
+        <Section title="Processing method">
+          <Radio
+            checked={processingTransport === "SUPABASE"}
+            onSelect={() => setProcessingTransport("SUPABASE")}
+          >
+            Supabase (Current)
+          </Radio>
+          <Radio
+            checked={processingTransport === "TELEGRAM"}
+            onSelect={() => setProcessingTransport("TELEGRAM")}
+          >
+            Telegram (Experimental)
+          </Radio>
+          {processingTransport === "TELEGRAM" && (
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-warning">
+              Telegram is an experimental processing path. Existing Supabase campaigns are not changed.
+            </p>
+          )}
+        </Section>
 
         <Section title={t("When someone comments on")}>
           <Radio

@@ -2,8 +2,72 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { Prisma } from '@/app/generated/prisma/client';
+import { matchKeywords } from '@/lib/utils/keyword-matcher';
+import type { ProcessingTransport } from '@/lib/queue/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
+
+async function commentTransports(
+  accountId: string,
+  mediaId: string,
+  originalMediaId: string | undefined,
+  commentText: string,
+): Promise<ProcessingTransport[]> {
+  const automations = await prisma.automation.findMany({
+    where: {
+      instagramAccountId: accountId,
+      isActive: true,
+      OR: [
+        { postId: mediaId },
+        ...(originalMediaId ? [{ postId: originalMediaId }] : []),
+        { matchAnyPost: true },
+      ],
+    },
+    select: {
+      processingTransport: true,
+      matchAnyWord: true,
+      keywords: true,
+      wholeWordMatch: true,
+    },
+  });
+
+  const transports = new Set<ProcessingTransport>();
+  for (const automation of automations) {
+    const matched = automation.matchAnyWord
+      ? true
+      : matchKeywords(commentText, automation.keywords, automation.wholeWordMatch).matched;
+    if (matched) transports.add(automation.processingTransport);
+  }
+  return [...transports];
+}
+
+async function messageTransports(
+  accountId: string,
+  messageText: string,
+): Promise<ProcessingTransport[]> {
+  const automations = await prisma.automation.findMany({
+    where: {
+      instagramAccountId: accountId,
+      isActive: true,
+      dmTriggerEnabled: true,
+    },
+    select: {
+      processingTransport: true,
+      matchAnyWord: true,
+      keywords: true,
+      wholeWordMatch: true,
+    },
+  });
+
+  const transports = new Set<ProcessingTransport>();
+  for (const automation of automations) {
+    const matched = automation.matchAnyWord
+      ? true
+      : matchKeywords(messageText, automation.keywords, automation.wholeWordMatch).matched;
+    if (matched) transports.add(automation.processingTransport);
+  }
+  return [...transports];
+}
 type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
 
 export async function processInstagramWebhook({ payload: incoming, workspaceId }: { payload: InstagramPayload; workspaceId?: string }) {
@@ -38,23 +102,32 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
-      await queue.add(
-        "process-comment",
-        {
-          instagramAccountId: event.instagramAccountId,
-          accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
-          commentId: event.commentId,
-          commentText: event.commentText,
-          commenterId: event.commenterId,
-          commenterName: event.commenterName,
-          mediaId: event.mediaId,
-          originalMediaId: event.originalMediaId,
-          source: "WEBHOOK",
-        },
-        {
-          jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
-        }
+      const transports = await commentTransports(
+        accountMap.get(event.instagramAccountId)!.id,
+        event.mediaId,
+        event.originalMediaId,
+        event.commentText,
       );
+      for (const processingTransport of transports) {
+        await queue.add(
+          "process-comment",
+          {
+            processingTransport,
+            instagramAccountId: event.instagramAccountId,
+            accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
+            commentId: event.commentId,
+            commentText: event.commentText,
+            commenterId: event.commenterId,
+            commenterName: event.commenterName,
+            mediaId: event.mediaId,
+            originalMediaId: event.originalMediaId,
+            source: "WEBHOOK",
+          },
+          {
+            jobId: `comment_${event.instagramAccountId}_${event.commentId}_${processingTransport.toLowerCase()}`,
+          }
+        );
+      }
 
       if (account) {
         await prisma.webhookEvent.update({
@@ -70,9 +143,19 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
     );
 
     for (const event of postbackEvents) {
+      const automationId = event.payload.split(":")[1]?.split(":")[0];
+      const automation = automationId
+        ? await prisma.automation.findFirst({
+            where: { id: automationId, isActive: true },
+            select: { processingTransport: true },
+          })
+        : null;
+      if (!automation) continue;
+
       await queue.add(
         POSTBACK_JOB_NAME,
         {
+          processingTransport: automation.processingTransport,
           instagramAccountId: event.instagramAccountId,
           accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
           userId: event.userId,
@@ -80,11 +163,9 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
           mid: event.mid,
         },
         {
-          // BullMQ forbids ":" in custom job ids, and the payload is
-          // "reveal:<id>", so build with underscores and strip any colons.
           jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
             event.mid ?? event.payload
-          ).replace(/:/g, "_")}`,
+          ).replace(/:/g, "_")}_${automation.processingTransport.toLowerCase()}`,
         }
       );
     }
@@ -98,25 +179,28 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
-      await queue.add(
-        MESSAGE_JOB_NAME,
-        {
-          instagramAccountId: event.instagramAccountId,
-          accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
-          messageId: event.messageId,
-          messageText: event.messageText,
-          senderId: event.senderId,
-        },
-        {
-          // Message ids can contain characters BullMQ rejects in a job id (":"
-          // in particular). base64url encodes into exactly the allowed alphabet
-          // and stays injective — substituting invalid characters would let two
-          // distinct mids collapse onto one job id, silently dropping a reply.
-          jobId: `message_${event.instagramAccountId}_${Buffer.from(
-            event.messageId
-          ).toString("base64url")}`,
-        }
+      const transports = await messageTransports(
+        accountMap.get(event.instagramAccountId)!.id,
+        event.messageText,
       );
+      for (const processingTransport of transports) {
+        await queue.add(
+          MESSAGE_JOB_NAME,
+          {
+            processingTransport,
+            instagramAccountId: event.instagramAccountId,
+            accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
+            messageId: event.messageId,
+            messageText: event.messageText,
+            senderId: event.senderId,
+          },
+          {
+            jobId: `message_${event.instagramAccountId}_${Buffer.from(
+              event.messageId
+            ).toString("base64url")}_${processingTransport.toLowerCase()}`,
+          }
+        );
+      }
 
       if (account) {
         await prisma.webhookEvent.update({
@@ -150,6 +234,7 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
           automation: {
             select: {
               id: true,
+              processingTransport: true,
             },
           },
         },
@@ -164,8 +249,9 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
         await queue.add(
           POSTBACK_JOB_NAME,
           {
+            processingTransport: automation.processingTransport,
             instagramAccountId: event.instagramAccountId,
-          accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
+            accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
             userId: event.userId,
             payload: `reveal:${automation.id}`,
             fallback: true,

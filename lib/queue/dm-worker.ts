@@ -340,6 +340,7 @@ async function processComment(job: DmWorkerJob & { data: ProcessCommentJob }): P
   const automations = await prisma.automation.findMany({
     where: {
       ...connectionScope(job.data),
+      processingTransport: job.data.processingTransport ?? "SUPABASE",
       // Match campaigns bound to this specific post, plus any-post campaigns.
       // A comment left on an ad carries the ad's own media id, while the
       // campaign is bound to the post the ad was created from, so both ids
@@ -1001,7 +1002,7 @@ async function processPostback(job: DmWorkerJob & { data: ProcessPostbackJob }):
   const fromOpeningDm = marker === "open";
 
   const automation = await prisma.automation.findFirst({
-    where: { id: automationId, isActive: true, ...connectionScope(job.data) },
+    where: { id: automationId, isActive: true, processingTransport: job.data.processingTransport ?? "SUPABASE", ...connectionScope(job.data) },
     include: {
       instagramAccount: true,
       workspace: true,
@@ -1421,7 +1422,7 @@ async function processFollowUp(job: DmWorkerJob & { data: ProcessFollowUpJob }):
   const { instagramAccountId, userId, automationId, commenterName } = job.data;
 
   const automation = await prisma.automation.findFirst({
-    where: { id: automationId, isActive: true, ...connectionScope(job.data) },
+    where: { id: automationId, isActive: true, processingTransport: job.data.processingTransport ?? "SUPABASE", ...connectionScope(job.data) },
     include: { instagramAccount: true },
   });
 
@@ -1477,6 +1478,7 @@ async function processMessage(job: DmWorkerJob & { data: ProcessMessageJob }): P
   const automations = await prisma.automation.findMany({
     where: {
       ...connectionScope(job.data),
+      processingTransport: job.data.processingTransport ?? "SUPABASE",
       dmTriggerEnabled: true,
       isActive: true,
       instagramAccount: { instagramId: instagramAccountId },
