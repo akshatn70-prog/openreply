@@ -21,6 +21,8 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const delayedTimers = new Set<ReturnType<typeof setTimeout>>();
+
 function configured(): boolean {
   return Boolean(
     process.env.TELEGRAM_QUEUE_BOT_TOKEN?.trim() &&
@@ -203,7 +205,19 @@ async function handleEnvelope(envelope: TelegramQueueEnvelope): Promise<void> {
   };
 
   if (envelope.notBefore && envelope.notBefore > Date.now()) {
-    await sleep(envelope.notBefore - Date.now());
+    // Never block the Telegram update loop on delayed retries/re-checks.
+    const delay = envelope.notBefore - Date.now();
+    const timer = setTimeout(() => {
+      delayedTimers.delete(timer);
+      void handleEnvelope({ ...envelope, notBefore: undefined }).catch((error) => {
+        console.error(
+          "[Telegram Worker] Delayed job failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    }, delay);
+    delayedTimers.add(timer);
+    return;
   }
 
   try {
@@ -271,9 +285,9 @@ export function startTelegramWorker(): { close: () => void } {
             continue;
           }
 
-          // Do not advance offset until the job has either completed or has
-          // been durably re-sent with its retry delay. Telegram keeps pending
-          // updates for up to 24 hours.
+          // Delayed work is scheduled locally; the Telegram update can now be
+          // acknowledged without blocking later jobs. Telegram retains
+          // unconfirmed updates for up to 24 hours.
           await handleEnvelope(envelope);
           offset = update.update_id + 1;
         }
@@ -291,6 +305,8 @@ export function startTelegramWorker(): { close: () => void } {
   return {
     close() {
       stopping = true;
+      for (const timer of delayedTimers) clearTimeout(timer);
+      delayedTimers.clear();
       void loop;
     },
   };
