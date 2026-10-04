@@ -5,6 +5,9 @@
  * Supabase Postgres via PGMQ. Successful jobs are deleted immediately.
  */
 import { Pool, type QueryResultRow } from "pg";
+import { enqueueTelegramJob, telegramQueueConfigured } from "@/lib/telegram/queue";
+
+export type ProcessingTransport = "SUPABASE" | "TELEGRAM";
 
 let pool: Pool | null = null;
 
@@ -23,6 +26,7 @@ function getQueuePool(): Pool {
 export type CommentSource = "WEBHOOK" | "POLLING";
 
 export interface ProcessCommentJob {
+  processingTransport?: ProcessingTransport;
   accountConnectionId?: string;
   instagramAccountId: string;
   commentId: string;
@@ -36,6 +40,7 @@ export interface ProcessCommentJob {
 }
 
 export interface ProcessPostbackJob {
+  processingTransport?: ProcessingTransport;
   accountConnectionId?: string;
   instagramAccountId: string;
   userId: string;
@@ -47,6 +52,7 @@ export interface ProcessPostbackJob {
 }
 
 export interface ProcessFollowUpJob {
+  processingTransport?: ProcessingTransport;
   accountConnectionId?: string;
   instagramAccountId: string;
   userId: string;
@@ -55,6 +61,7 @@ export interface ProcessFollowUpJob {
 }
 
 export interface ProcessMessageJob {
+  processingTransport?: ProcessingTransport;
   accountConnectionId?: string;
   instagramAccountId: string;
   messageId: string;
@@ -112,6 +119,20 @@ export async function enqueueDMJob<T extends DmQueueJob>(
   data: T,
   options: DmQueueAddOptions = {},
 ): Promise<string | null> {
+  const transport = data.processingTransport ?? "SUPABASE";
+  if (transport === "TELEGRAM") {
+    if (!telegramQueueConfigured()) {
+      throw new Error(
+        "Telegram processing is not configured. Set TELEGRAM_QUEUE_BOT_TOKEN, TELEGRAM_WORKER_BOT_TOKEN and TELEGRAM_WORKER_BOT_USERNAME.",
+      );
+    }
+    return enqueueTelegramJob(
+      name,
+      data as T & { processingTransport: "TELEGRAM" },
+      options,
+    );
+  }
+
   const delaySeconds = Math.max(0, Math.ceil((options.delay ?? 0) / 1000));
   const dedupKey = options.jobId ?? null;
   const result = await query<{ id: string | number | null }>(
