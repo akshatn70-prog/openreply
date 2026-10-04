@@ -128,7 +128,7 @@ export async function enqueueDMJob<T extends DmQueueJob>(
     }
     return enqueueTelegramJob(
       name,
-      data as T & { processingTransport: "TELEGRAM" },
+      data as unknown as DmQueueJob & { processingTransport: "TELEGRAM" },
       options,
     );
   }
