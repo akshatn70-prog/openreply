@@ -8,8 +8,8 @@ function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: Number(process.env.WORKER_HEALTH_DB_POOL_MAX ?? 2),
-      idleTimeoutMillis: 10_000,
+      max: Number(process.env.WORKER_HEALTH_DB_POOL_MAX ?? 1),
+      idleTimeoutMillis: 60_000,
       connectionTimeoutMillis: 10_000,
     });
   }
