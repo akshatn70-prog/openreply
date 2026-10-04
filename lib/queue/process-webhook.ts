@@ -8,14 +8,14 @@ import type { ProcessingTransport } from '@/lib/queue/client';
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
 
 async function commentTransports(
-  instagramAccountId: string,
+  accountId: string,
   mediaId: string,
   originalMediaId: string | undefined,
   commentText: string,
 ): Promise<ProcessingTransport[]> {
   const automations = await prisma.automation.findMany({
     where: {
-      instagramAccountId,
+      instagramAccountId: accountId,
       isActive: true,
       OR: [
         { postId: mediaId },
@@ -42,12 +42,12 @@ async function commentTransports(
 }
 
 async function messageTransports(
-  instagramAccountId: string,
+  accountId: string,
   messageText: string,
 ): Promise<ProcessingTransport[]> {
   const automations = await prisma.automation.findMany({
     where: {
-      instagramAccountId,
+      instagramAccountId: accountId,
       isActive: true,
       dmTriggerEnabled: true,
     },
@@ -103,7 +103,7 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
       if (!account) continue;
 
       const transports = await commentTransports(
-        event.instagramAccountId,
+        accountMap.get(event.instagramAccountId)!.id,
         event.mediaId,
         event.originalMediaId,
         event.commentText,
@@ -180,7 +180,7 @@ export async function processInstagramWebhook({ payload: incoming, workspaceId }
       if (!account) continue;
 
       const transports = await messageTransports(
-        event.instagramAccountId,
+        accountMap.get(event.instagramAccountId)!.id,
         event.messageText,
       );
       for (const processingTransport of transports) {
