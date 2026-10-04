@@ -74,7 +74,7 @@ export async function enqueueTelegramJob(
 
 export interface TelegramUpdate {
   update_id: number;
-  message?: { text?: string };
+  message?: { text?: string; chat?: { id: string | number } };
 }
 
 export async function readTelegramJobs(
