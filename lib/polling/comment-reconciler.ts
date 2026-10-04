@@ -79,6 +79,7 @@ export async function reconcileComments(): Promise<void> {
       keywords: true,
       wholeWordMatch: true,
       publicReplyEnabled: true,
+      processingTransport: true,
       workspaceId: true,
       instagramAccount: {
         select: {
@@ -266,6 +267,7 @@ async function sweepCampaign({
       // above and by the worker's atomic, durable per-leg claims. Send attempts
       // are counted in DmLog across jobs, so a sweep cannot reset the budget.
       await queue.add("process-comment", {
+        processingTransport: automation.processingTransport,
         instagramAccountId: account.instagramId,
         accountConnectionId: account.id,
         commentId: c.id,
