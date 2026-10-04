@@ -1841,7 +1841,7 @@ async function recordWorkerFailure(
 export function createDMWorker(): { close: () => Promise<void> } {
   const concurrency = Math.max(
     1,
-    Number(process.env.DM_WORKER_CONCURRENCY ?? 5),
+    Number(process.env.DM_WORKER_CONCURRENCY ?? 2),
   );
   const visibilityTimeoutSeconds = Math.max(
     300,
@@ -1853,7 +1853,7 @@ export function createDMWorker(): { close: () => Promise<void> } {
   async function loop() {
     while (!stopping) {
       try {
-        const jobs = await readDMJobs(1, visibilityTimeoutSeconds, 5);
+        const jobs = await readDMJobs(1, visibilityTimeoutSeconds, 30);
         for (const job of jobs) {
           if (stopping) break;
           try {
