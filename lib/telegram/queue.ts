@@ -40,18 +40,23 @@ export function telegramQueueConfigured(): boolean {
   );
 }
 
-let workerBotChatIdPromise: Promise<number> | null = null;
+let workerBotUsernamePromise: Promise<string> | null = null;
 
-async function getWorkerBotChatId(): Promise<number> {
-  if (!workerBotChatIdPromise) {
+async function getWorkerBotUsername(): Promise<string> {
+  if (!workerBotUsernamePromise) {
     const workerToken = required("TELEGRAM_WORKER_BOT_TOKEN");
-    workerBotChatIdPromise = callTelegram<{ id: number }>(
+    workerBotUsernamePromise = callTelegram<{ username?: string }>(
       workerToken,
       "getMe",
       {},
-    ).then((bot) => bot.id);
+    ).then((bot) => {
+      if (!bot.username) {
+        throw new Error("Telegram worker bot has no username");
+      }
+      return `@${bot.username}`;
+    });
   }
-  return workerBotChatIdPromise;
+  return workerBotUsernamePromise;
 }
 
 export async function enqueueTelegramJob(
@@ -60,7 +65,7 @@ export async function enqueueTelegramJob(
   options: DmQueueAddOptions = {},
 ): Promise<string> {
   const producerToken = required("TELEGRAM_QUEUE_BOT_TOKEN");
-  const workerBotChatId = await getWorkerBotChatId();
+  const workerBotUsername = await getWorkerBotUsername();
   const id = options.jobId ?? `tg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const envelope: TelegramQueueEnvelope = {
     v: 1,
@@ -79,9 +84,9 @@ export async function enqueueTelegramJob(
 
   await callTelegram(producerToken, "sendMessage", {
     // Telegram's Bot-to-Bot Communication Mode lets the producer send directly
-    // to the worker bot's private chat. We discover the worker's numeric id via
-    // getMe, so the queue no longer needs a hard-coded chat id or username.
-    chat_id: workerBotChatId,
+    // to the worker bot's private chat. We discover its username via
+    // getMe, so no hard-coded username or chat ID is required.
+    chat_id: workerBotUsername,
     text,
     disable_notification: true,
   });
