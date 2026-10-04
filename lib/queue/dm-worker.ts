@@ -85,7 +85,7 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 // One re-check after 5 seconds. This keeps the follow gate responsive
 // while giving Meta a short moment to reflect a brand-new follow.
 const FOLLOW_RECHECK_DELAYS_MS = (
-  process.env.FOLLOW_RECHECK_DELAYS_MS ?? "5000"
+  process.env.FOLLOW_RECHECK_DELAYS_MS ?? "5000,15000,30000,60000"
 )
   .split(",")
   .map(Number)
