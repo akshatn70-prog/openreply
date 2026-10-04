@@ -92,9 +92,18 @@ async function handleCommand(update: TelegramUpdate): Promise<boolean> {
   if (message?.chat?.id == null || !text?.startsWith("/")) return false;
 
   const allowedCommandChatId = commandChatId();
-  // Commands are optional and isolated from the queue transport. If no
-  // command allow-list is configured, arbitrary messages are never commands.
-  if (!allowedCommandChatId || String(message.chat.id) !== allowedCommandChatId) {
+  const chatType = message.chat.type ?? "private";
+
+  // Commands work without any chat-ID environment variable in private chats.
+  // TELEGRAM_COMMAND_CHAT_ID remains an optional allow-list when a stricter
+  // single-chat setup is desired. Queue envelopes are handled separately and
+  // never enter this command path.
+  const commandAllowed =
+    allowedCommandChatId
+      ? String(message.chat.id) === allowedCommandChatId
+      : chatType === "private";
+
+  if (!commandAllowed) {
     return true;
   }
 
