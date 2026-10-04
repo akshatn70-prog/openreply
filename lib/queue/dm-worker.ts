@@ -1688,6 +1688,7 @@ async function processMessage(job: DmWorkerJob & { data: ProcessMessageJob }): P
           await getDMQueue().add(
             FOLLOWUP_JOB_NAME,
             {
+              processingTransport: job.data.processingTransport ?? "SUPABASE",
               instagramAccountId: automation.instagramAccount.instagramId,
               accountConnectionId: automation.instagramAccountId,
               userId: senderId,
