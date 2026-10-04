@@ -123,7 +123,7 @@ export async function enqueueDMJob<T extends DmQueueJob>(
   if (transport === "TELEGRAM") {
     if (!telegramQueueConfigured()) {
       throw new Error(
-        "Telegram processing is not configured. Set TELEGRAM_QUEUE_BOT_TOKEN, TELEGRAM_WORKER_BOT_TOKEN and TELEGRAM_QUEUE_CHAT_ID.",
+        "Telegram processing is not configured. Set TELEGRAM_QUEUE_BOT_TOKEN and TELEGRAM_WORKER_BOT_TOKEN.",
       );
     }
     return enqueueTelegramJob(
