@@ -692,22 +692,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
 
-        <Section title={t("Processing method")}>
+        <Section title="Processing method">
           <Radio
             checked={processingTransport === "SUPABASE"}
             onSelect={() => setProcessingTransport("SUPABASE")}
           >
-            {t("Supabase (Current)")}
+            Supabase (Current)
           </Radio>
           <Radio
             checked={processingTransport === "TELEGRAM"}
             onSelect={() => setProcessingTransport("TELEGRAM")}
           >
-            {t("Telegram (Experimental)")}
+            Telegram (Experimental)
           </Radio>
           {processingTransport === "TELEGRAM" && (
             <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-warning">
-              {t("Telegram is an experimental processing path. Existing Supabase campaigns are not changed.")}
+              Telegram is an experimental processing path. Existing Supabase campaigns are not changed.
             </p>
           )}
         </Section>
