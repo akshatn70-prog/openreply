@@ -7,6 +7,7 @@ import {
   parseTelegramJob,
   readTelegramJobs,
   type TelegramQueueEnvelope,
+  type TelegramUpdate,
 } from "@/lib/telegram/queue";
 import { processJob, UnrecoverableError } from "@/lib/queue/dm-worker";
 import {
