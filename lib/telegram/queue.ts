@@ -37,7 +37,7 @@ export function telegramQueueConfigured(): boolean {
   return Boolean(
     process.env.TELEGRAM_QUEUE_BOT_TOKEN?.trim() &&
       process.env.TELEGRAM_WORKER_BOT_TOKEN?.trim() &&
-      process.env.TELEGRAM_WORKER_BOT_USERNAME?.trim(),
+      process.env.TELEGRAM_QUEUE_CHAT_ID?.trim(),
   );
 }
 
@@ -47,7 +47,7 @@ export async function enqueueTelegramJob(
   options: DmQueueAddOptions = {},
 ): Promise<string> {
   const producerToken = required("TELEGRAM_QUEUE_BOT_TOKEN");
-  const workerUsername = required("TELEGRAM_WORKER_BOT_USERNAME").replace(/^@/, "");
+  const queueChatId = required("TELEGRAM_QUEUE_CHAT_ID");
   const id = options.jobId ?? `tg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const envelope: TelegramQueueEnvelope = {
     v: 1,
@@ -65,7 +65,7 @@ export async function enqueueTelegramJob(
   }
 
   await callTelegram(producerToken, "sendMessage", {
-    chat_id: `@${workerUsername}`,
+    chat_id: queueChatId,
     text,
     disable_notification: true,
   });
