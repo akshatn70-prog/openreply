@@ -12,8 +12,8 @@ function getQueuePool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: Number(process.env.QUEUE_DB_POOL_MAX ?? 8),
-      idleTimeoutMillis: 10_000,
+      max: Number(process.env.QUEUE_DB_POOL_MAX ?? 2),
+      idleTimeoutMillis: 60_000,
       connectionTimeoutMillis: 10_000,
     });
   }
