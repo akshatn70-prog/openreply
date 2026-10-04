@@ -93,7 +93,7 @@ export async function enqueueTelegramJob(
 
 export interface TelegramUpdate {
   update_id: number;
-  message?: { text?: string; chat?: { id: string | number } };
+  message?: { text?: string; chat?: { id: string | number; type?: "private" | "group" | "supergroup" | "channel" } };
 }
 
 export async function readTelegramJobs(
