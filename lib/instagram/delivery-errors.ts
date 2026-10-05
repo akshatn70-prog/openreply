@@ -29,6 +29,24 @@ export function isConfirmedSendRejection(error: unknown): boolean {
   );
 }
 
+/**
+ * Rejections that cannot be fixed by retrying the same job. These should be
+ * archived immediately instead of consuming the worker's retry budget.
+ *
+ * Meta code 200 is used here only for the explicit Instagram Direct Messaging
+ * access-disabled response. Other code-200 responses remain on the normal
+ * confirmed-rejection path unless their message proves this exact condition.
+ */
+export function isPermanentSendRejection(error: unknown): boolean {
+  return (
+    error instanceof MetaApiError &&
+    error.code === 200 &&
+    /account owner has disabled access to Instagram Direct Messaging/i.test(
+      error.message,
+    )
+  );
+}
+
 export function classifySendError(error: unknown): unknown {
   return isDeliveryUnconfirmed(error) || isConfirmedSendRejection(error)
     ? error
