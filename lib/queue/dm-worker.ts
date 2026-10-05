@@ -3,6 +3,7 @@ import {
   hasLegacyUnconfirmedDelivery,
   isConfirmedSendRejection,
   isDeliveryUnconfirmed,
+  isPermanentSendRejection,
 } from "@/lib/instagram/delivery-errors";
 import { claimCommentDelivery, claimUserRevealDelivery, MAX_COMMENT_SEND_ATTEMPTS } from "./comment-delivery";
 import { createHash } from "node:crypto";
@@ -1790,7 +1791,7 @@ export async function processJob(job: DmWorkerJob): Promise<void> {
     // formatError() takes unknown; isDeliveryUnconfirmed() is a type guard on
     // Error subclasses, but keep using formatError() for a consistent message
     // format across every UnrecoverableError thrown from this worker.
-    if (isDeliveryUnconfirmed(error))
+    if (isDeliveryUnconfirmed(error) || isPermanentSendRejection(error))
       throw new UnrecoverableError(formatError(error));
     throw error;
   }
